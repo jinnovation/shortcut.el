@@ -89,6 +89,11 @@ You can generate a token at https://app.shortcut.com/settings/account/api-tokens
   "Face for story metadata values."
   :group 'shortcut)
 
+(defface shortcut-placeholder
+    '((t :inherit font-lock-comment-face))
+  "Face for placeholder values in story buffers."
+  :group 'shortcut)
+
 ;;; API Utilities
 
 (defun shortcut--api-request (endpoint &optional method data)
@@ -246,6 +251,7 @@ Optional FACE is applied to the value."
          (estimate (alist-get 'estimate story))
          (epic-id (alist-get 'epic_id story))
          (iteration-id (alist-get 'iteration_id story))
+         (deadline (alist-get 'deadline story))
          (created-at (alist-get 'created_at story))
          (updated-at (alist-get 'updated_at story))
          (completed-at (alist-get 'completed_at story))
@@ -280,6 +286,13 @@ Optional FACE is applied to the value."
       (shortcut--story-insert-header "Owners"
                                      (mapconcat (lambda (id) (format "%s" id))
                                                 owners ", ")))
+
+    ;; Insert deadline
+    (if deadline
+        (shortcut--story-insert-header "Deadline" (shortcut--story-format-timestamp deadline))
+      (shortcut--story-insert-header "Deadline"
+                                     "(none)"
+                                     'shortcut-placeholder))
 
     ;; Insert timestamps
     (shortcut--story-insert-header "Created" (shortcut--story-format-timestamp created-at))
