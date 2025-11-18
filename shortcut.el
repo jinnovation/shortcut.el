@@ -267,6 +267,28 @@ Optional FACE is applied to the value."
     (insert description)
     (insert "\n")))
 
+(defun shortcut--story-insert-tasks (tasks)
+  "Insert TASKS as a checklist using Emacs checkbox widgets."
+  (when (and tasks (> (length tasks) 0))
+    (insert "\n")
+    (insert (propertize "Tasks\n" 'face 'shortcut-story-header))
+    (insert (make-string 80 ?─))
+    (insert "\n\n")
+    (seq-doseq (task tasks)
+      (let* ((complete (alist-get 'complete task))
+             (description (alist-get 'description task)))
+        (insert "  ")
+        (widget-create 'checkbox
+                       :value complete
+                       :inactive t)
+        (insert " ")
+        (if complete
+            (insert (propertize description 'face 'shortcut-placeholder))
+          (insert description))
+        (insert "\n")))
+    (insert "\n")
+    (widget-setup)))
+
 (defun shortcut--story-format-buffer (story)
   "Format STORY data into a readable buffer similar to Forge PR buffers."
   (let* ((id (alist-get 'id story))
@@ -284,6 +306,7 @@ Optional FACE is applied to the value."
          (updated-at (alist-get 'updated_at story))
          (completed-at (alist-get 'completed_at story))
          (description (alist-get 'description story))
+         (tasks (alist-get 'tasks story))
          (app-url (alist-get 'app_url story)))
 
     ;; Insert header line (title)
@@ -331,6 +354,9 @@ Optional FACE is applied to the value."
     ;; Insert URL
     (when app-url
       (shortcut--story-insert-header "URL" app-url))
+
+    ;; Insert tasks
+    (shortcut--story-insert-tasks tasks)
 
     ;; Insert description
     (shortcut--story-insert-description description)))
