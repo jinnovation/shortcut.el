@@ -275,7 +275,7 @@ Optional FACE is applied to the value."
     (insert (make-string 80 ?─))
     (insert "\n\n")
     (seq-doseq (task tasks)
-      (let* ((complete (alist-get 'complete task))
+      (let* ((complete (eq :json-true (alist-get 'complete task)))
              (description (alist-get 'description task)))
         (insert "  ")
         (widget-create 'checkbox
@@ -295,6 +295,7 @@ Optional FACE is applied to the value."
          (name (alist-get 'name story))
          (story-type (alist-get 'story_type story))
          (workflow-state (alist-get 'workflow_state_id story))
+         ;; TODO: This needs to get the state name via workflow_state_id and workflow_id
          (workflow-state-name (or (alist-get 'workflow_state_name story) "Unknown"))
          (labels (alist-get 'labels story))
          (owners (alist-get 'owner_ids story))
