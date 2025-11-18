@@ -52,6 +52,12 @@ You can generate a token at https://app.shortcut.com/settings/account/api-tokens
   :type 'string
   :group 'shortcut)
 
+;;; Cache Variables
+
+(defvar shortcut--member-cache (make-hash-table :test 'equal)
+  "Cache for member information.
+Keys are member IDs (as strings), values are member objects.")
+
 ;;; Faces
 
 (defface shortcut-story-title
@@ -115,6 +121,28 @@ METHOD defaults to GET.  Returns the parsed JSON response."
             (json-array-type 'vector)
             (json-key-type 'symbol))
         (json-read)))))
+
+;;; Member Functions
+
+(defun shortcut-member-get (member-id)
+  "Get the JSON payload for member with MEMBER-ID.
+Returns the member as an alist parsed from JSON.
+Results are cached in `shortcut--member-cache'."
+  (let ((member-id-str (format "%s" member-id)))
+    (or (gethash member-id-str shortcut--member-cache)
+        (let ((member (shortcut--api-request (format "/members/%s" member-id-str))))
+          (puthash member-id-str member shortcut--member-cache)
+          member))))
+
+(defun shortcut--member-name (member-id)
+  "Get the name of the member with MEMBER-ID.
+Returns the member name as a string, or the ID if lookup fails."
+  (condition-case err
+      (let ((member (shortcut-member-get member-id)))
+        (or (alist-get 'name (alist-get 'profile member))
+            (alist-get 'name member)
+            (format "%s" member-id)))
+    (error (format "%s" member-id))))
 
 ;;; Story Mode
 
@@ -284,7 +312,7 @@ Optional FACE is applied to the value."
     ;; Insert owners (if available from story data)
     (when owners
       (shortcut--story-insert-header "Owners"
-                                     (mapconcat (lambda (id) (format "%s" id))
+                                     (mapconcat #'shortcut--member-name
                                                 owners ", ")))
 
     ;; Insert deadline
@@ -323,7 +351,7 @@ Optional FACE is applied to the value."
 ;;; Transient Interface
 
 (transient-define-prefix shortcut-dispatch ()
-  "Dispatch transient for Shortcut commands."
+  "Work with Shortcut."
   ["Shortcut"
    ["Stories"
     ("s" "Get story" shortcut-story-get)]])
