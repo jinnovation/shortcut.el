@@ -1,2 +1,3 @@
 - Shortcut REST API docs: https://developer.shortcut.com/api/rest/v3
 - Usage examples for the REST API in other languages can be found here: https://github.com/useshortcut/api-cookbook
+- Use only Emacs standard libraries, packages, and APIs.
