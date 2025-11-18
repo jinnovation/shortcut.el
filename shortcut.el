@@ -111,13 +111,6 @@ METHOD defaults to GET.  Returns the parsed JSON response."
             (json-key-type 'symbol))
         (json-read)))))
 
-;;; Story Functions
-
-(defun shortcut-story-get (story-id)
-  "Get the JSON payload for story with STORY-ID.
-Returns the story as an alist parsed from JSON."
-  (shortcut--api-request (format "/stories/%s" story-id)))
-
 ;;; Story Mode
 
 (defvar shortcut-story-mode-map
@@ -301,10 +294,10 @@ Optional FACE is applied to the value."
     ;; Insert description
     (shortcut--story-insert-description description)))
 
-(defun shortcut-story-show (story-id)
+(defun shortcut-story-get (story-id)
   "Interactively get and display a Shortcut story by STORY-ID."
   (interactive "nStory ID: ")
-  (let ((story (shortcut-story-get story-id)))
+  (let ((story (shortcut--api-request (format "/stories/%s" story-id))))
     (with-current-buffer (get-buffer-create (format "*Shortcut Story: sc-%s*" story-id))
       (let ((inhibit-read-only t))
         (erase-buffer)
@@ -320,7 +313,7 @@ Optional FACE is applied to the value."
   "Dispatch transient for Shortcut commands."
   ["Shortcut"
    ["Stories"
-    ("s" "Show story by ID" shortcut-story-show)]])
+    ("s" "Get story" shortcut-story-get)]])
 
 (provide 'shortcut)
 
