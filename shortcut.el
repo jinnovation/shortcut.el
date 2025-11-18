@@ -2,11 +2,11 @@
 
 ;; Copyright (C) 2025 Jonathan Jin
 
-;; Author: Jonathan Jin
+;; Author: Jonathan Jin <me@jonathanj.in>
 ;; URL: https://github.com/jinnovation/shortcut.el
 ;; Version: 0.1.0
 ;; Package-Requires: ((emacs "27.1"))
-;; Keywords: tools, convenience, project
+;; Keywords: tools, convenience, project, project-management
 
 ;; This file is not part of GNU Emacs.
 
@@ -50,6 +50,35 @@ You can generate a token at https://app.shortcut.com/settings/account/api-tokens
   "Base URL for the Shortcut API."
   :type 'string
   :group 'shortcut)
+
+;;; API Utilities
+
+(defun shortcut--make-api-request (endpoint &optional method data)
+  "Make an API request to ENDPOINT with optional METHOD and DATA.
+METHOD defaults to GET.  Returns the parsed JSON response."
+  (let* ((url-request-method (or method "GET"))
+         (url-request-extra-headers
+          `(("Content-Type" . "application/json")
+            ("Shortcut-Token" . ,shortcut-api-token)))
+         (url-request-data
+          (when data
+            (encode-coding-string (json-encode data) 'utf-8)))
+         (url (concat shortcut-api-base-url endpoint)))
+    (with-current-buffer (url-retrieve-synchronously url t)
+      (goto-char (point-min))
+      (re-search-forward "^$")
+      (delete-region (point-min) (point))
+      (let ((json-object-type 'alist)
+            (json-array-type 'vector)
+            (json-key-type 'symbol))
+        (json-read)))))
+
+;;; Story Functions
+
+(defun shortcut-get-story (story-id)
+  "Get the JSON payload for story with STORY-ID.
+Returns the story as an alist parsed from JSON."
+  (shortcut--make-api-request (format "/stories/%s" story-id)))
 
 (provide 'shortcut)
 
