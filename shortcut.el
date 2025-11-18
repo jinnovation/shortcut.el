@@ -80,7 +80,7 @@ You can generate a token at https://app.shortcut.com/settings/account/api-tokens
   :group 'shortcut)
 
 (defface shortcut-story-header
-    '((t :inherit magit-section-heading))
+    '((t :weight bold :foreground "cyan"))
   "Face for story header fields."
   :group 'shortcut)
 
