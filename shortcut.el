@@ -91,7 +91,7 @@ You can generate a token at https://app.shortcut.com/settings/account/api-tokens
 
 ;;; API Utilities
 
-(defun shortcut--make-api-request (endpoint &optional method data)
+(defun shortcut--api-request (endpoint &optional method data)
   "Make an API request to ENDPOINT with optional METHOD and DATA.
 METHOD defaults to GET.  Returns the parsed JSON response."
   (let* ((url-request-method (or method "GET"))
@@ -113,10 +113,10 @@ METHOD defaults to GET.  Returns the parsed JSON response."
 
 ;;; Story Functions
 
-(defun shortcut-get-story (story-id)
+(defun shortcut-story-get (story-id)
   "Get the JSON payload for story with STORY-ID.
 Returns the story as an alist parsed from JSON."
-  (shortcut--make-api-request (format "/stories/%s" story-id)))
+  (shortcut--api-request (format "/stories/%s" story-id)))
 
 ;;; Story Mode
 
@@ -147,17 +147,17 @@ Returns the story as an alist parsed from JSON."
   (interactive)
   (when shortcut-story--current-id
     (let ((inhibit-read-only t)
-          (story (shortcut-get-story shortcut-story--current-id))
+          (story (shortcut-story-get shortcut-story--current-id))
           (pos (point)))
       (erase-buffer)
-      (shortcut--format-story-buffer story)
+      (shortcut--story-format-buffer story)
       (goto-char (min pos (point-max))))))
 
 (defun shortcut-story-browse-url ()
   "Open the current story in a web browser."
   (interactive)
   (when shortcut-story--current-id
-    (let* ((story (shortcut-get-story shortcut-story--current-id))
+    (let* ((story (shortcut-story-get shortcut-story--current-id))
            (url (alist-get 'app_url story)))
       (if url
           (browse-url url)
@@ -165,7 +165,7 @@ Returns the story as an alist parsed from JSON."
 
 ;;; Story Buffer Formatting
 
-(defun shortcut--format-story-state (workflow-state-name)
+(defun shortcut--story-format-state (workflow-state-name)
   "Return a face for the story state based on WORKFLOW-STATE-NAME."
   (pcase (downcase workflow-state-name)
     ((or "unstarted" "to do" "backlog") 'shortcut-story-state-unstarted)
@@ -173,7 +173,7 @@ Returns the story as an alist parsed from JSON."
     ((or "done" "completed" "deployed") 'shortcut-story-state-done)
     (_ 'shortcut-story-state-started)))
 
-(defun shortcut--insert-story-header (label value &optional face)
+(defun shortcut--story-insert-header (label value &optional face)
   "Insert a header line with LABEL and VALUE.
 Optional FACE is applied to the value."
   (when value
@@ -183,7 +183,7 @@ Optional FACE is applied to the value."
                         'face (or face 'shortcut-story-metadata)))
     (insert "\n")))
 
-(defun shortcut--insert-story-labels (labels)
+(defun shortcut--story-insert-labels (labels)
   "Insert formatted LABELS with colored backgrounds."
   (when (and labels (> (length labels) 0))
     (insert (propertize "Labels:         " 'face 'shortcut-story-header))
@@ -213,25 +213,25 @@ Optional FACE is applied to the value."
                 (overlay-put o 'help-echo description)))))))
     (insert "\n")))
 
-(defun shortcut--insert-story-owners (owners)
+(defun shortcut--story-insert-owners (owners)
   "Insert formatted OWNERS list."
   (when (and owners (> (length owners) 0))
     (let ((names (mapcar (lambda (owner)
                            (alist-get 'profile owner))
                          owners)))
-      (shortcut--insert-story-header
+      (shortcut--story-insert-header
        "Owners"
        (mapconcat (lambda (profile)
                     (alist-get 'name profile))
                   names ", ")))))
 
-(defun shortcut--format-timestamp (timestamp)
+(defun shortcut--story-format-timestamp (timestamp)
   "Format TIMESTAMP string to a readable format."
   (when timestamp
     (format-time-string "%Y-%m-%d %H:%M"
                         (encode-time (parse-time-string timestamp)))))
 
-(defun shortcut--insert-story-description (description)
+(defun shortcut--story-insert-description (description)
   "Insert the story DESCRIPTION with proper formatting."
   (when (and description (not (string-empty-p description)))
     (insert "\n")
@@ -241,7 +241,7 @@ Optional FACE is applied to the value."
     (insert description)
     (insert "\n")))
 
-(defun shortcut--format-story-buffer (story)
+(defun shortcut--story-format-buffer (story)
   "Format STORY data into a readable buffer similar to Forge PR buffers."
   (let* ((id (alist-get 'id story))
          (name (alist-get 'name story))
@@ -261,7 +261,7 @@ Optional FACE is applied to the value."
 
     ;; Insert header line (title)
     (insert (propertize (format "sc-%d" id)
-                        'face (shortcut--format-story-state workflow-state-name)))
+                        'face (shortcut--story-format-state workflow-state-name)))
     (insert " ")
     (insert (propertize name 'face 'shortcut-story-title))
     (insert "\n")
@@ -269,48 +269,48 @@ Optional FACE is applied to the value."
     (insert "\n\n")
 
     ;; Insert metadata headers
-    (shortcut--insert-story-header "Type" (upcase story-type))
-    (shortcut--insert-story-header "State" workflow-state-name
-                                   (shortcut--format-story-state workflow-state-name))
+    (shortcut--story-insert-header "Type" (upcase story-type))
+    (shortcut--story-insert-header "State" workflow-state-name
+                                   (shortcut--story-format-state workflow-state-name))
     (when estimate
-      (shortcut--insert-story-header "Estimate" (format "%d points" estimate)))
+      (shortcut--story-insert-header "Estimate" (format "%d points" estimate)))
     (when epic-id
-      (shortcut--insert-story-header "Epic" (format "#%d" epic-id)))
+      (shortcut--story-insert-header "Epic" (format "sc-%d" epic-id)))
     (when iteration-id
-      (shortcut--insert-story-header "Iteration" (format "#%d" iteration-id)))
+      (shortcut--story-insert-header "Iteration" (format "sc-%d" iteration-id)))
 
     ;; Insert labels
-    (shortcut--insert-story-labels labels)
+    (shortcut--story-insert-labels labels)
 
     ;; Insert owners (if available from story data)
     (when owners
-      (shortcut--insert-story-header "Owners"
+      (shortcut--story-insert-header "Owners"
                                      (mapconcat (lambda (id) (format "%s" id))
                                                 owners ", ")))
 
     ;; Insert timestamps
-    (shortcut--insert-story-header "Created" (shortcut--format-timestamp created-at))
-    (shortcut--insert-story-header "Updated" (shortcut--format-timestamp updated-at))
+    (shortcut--story-insert-header "Created" (shortcut--story-format-timestamp created-at))
+    (shortcut--story-insert-header "Updated" (shortcut--story-format-timestamp updated-at))
     (when completed-at
-      (shortcut--insert-story-header "Completed" (shortcut--format-timestamp completed-at)))
+      (shortcut--story-insert-header "Completed" (shortcut--story-format-timestamp completed-at)))
 
     ;; Insert URL
     (when app-url
-      (shortcut--insert-story-header "URL" app-url))
+      (shortcut--story-insert-header "URL" app-url))
 
     ;; Insert description
-    (shortcut--insert-story-description description)))
+    (shortcut--story-insert-description description)))
 
-(defun shortcut-get-story-interactive (story-id)
+(defun shortcut-story-show (story-id)
   "Interactively get and display a Shortcut story by STORY-ID."
   (interactive "nStory ID: ")
-  (let ((story (shortcut-get-story story-id)))
-    (with-current-buffer (get-buffer-create (format "*Shortcut Story: sc#%s*" story-id))
+  (let ((story (shortcut-story-get story-id)))
+    (with-current-buffer (get-buffer-create (format "*Shortcut Story: sc-%s*" story-id))
       (let ((inhibit-read-only t))
         (erase-buffer)
         (shortcut-story-mode)
         (setq shortcut-story--current-id story-id)
-        (shortcut--format-story-buffer story)
+        (shortcut--story-format-buffer story)
         (goto-char (point-min))
         (display-buffer (current-buffer))))))
 
@@ -320,7 +320,7 @@ Optional FACE is applied to the value."
   "Dispatch transient for Shortcut commands."
   ["Shortcut"
    ["Stories"
-    ("s" "Get story by ID" shortcut-get-story-interactive)]])
+    ("s" "Show story by ID" shortcut-story-show)]])
 
 (provide 'shortcut)
 
