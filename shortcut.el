@@ -5,7 +5,7 @@
 ;; Author: Jonathan Jin <me@jonathanj.in>
 ;; URL: https://github.com/jinnovation/shortcut.el
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "27.1"))
+;; Package-Requires: ((emacs "27.1") (transient "0.3.0"))
 ;; Keywords: tools, convenience, project, project-management
 
 ;; This file is not part of GNU Emacs.
@@ -33,6 +33,7 @@
 
 (require 'url)
 (require 'json)
+(require 'transient)
 
 (defgroup shortcut nil
   "Emacs integration for Shortcut project management."
@@ -79,6 +80,25 @@ METHOD defaults to GET.  Returns the parsed JSON response."
   "Get the JSON payload for story with STORY-ID.
 Returns the story as an alist parsed from JSON."
   (shortcut--make-api-request (format "/stories/%s" story-id)))
+
+(defun shortcut-get-story-interactive (story-id)
+  "Interactively get and display a Shortcut story by STORY-ID."
+  (interactive "nStory ID: ")
+  (let ((story (shortcut-get-story story-id)))
+    (with-current-buffer (get-buffer-create (format "*Shortcut Story: %s*" story-id))
+      (erase-buffer)
+      (insert (json-encode story))
+      (json-pretty-print-buffer)
+      (goto-char (point-min))
+      (display-buffer (current-buffer)))))
+
+;;; Transient Interface
+
+(transient-define-prefix shortcut-dispatch ()
+  "Dispatch transient for Shortcut commands."
+  ["Shortcut"
+   ["Stories"
+    ("s" "Get story by ID" shortcut-get-story-interactive)]])
 
 (provide 'shortcut)
 
