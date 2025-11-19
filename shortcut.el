@@ -63,6 +63,11 @@ Keys are member IDs (as strings), values are member objects.")
   "Cache for workflow information.
 Keys are workflow IDs (as strings), values are workflow objects.")
 
+;; FIXME: Will need some way to expire/TTL these, e.g. to account for title changes
+(defvar shortcut--story-cache (make-hash-table :test 'equal)
+  "Cache for story information.
+Keys are story IDs (as strings), values are alists with at least 'name field.")
+
 ;;; Faces
 
 (defface shortcut-story-title
@@ -148,9 +153,33 @@ METHOD defaults to GET.  Returns the parsed JSON response."
 
 ;;; Member Functions
 
+(defun shortcut--story-cache-add (story)
+  "Add STORY to the cache, storing its ID and name.
+STORY should be an alist with at least 'id and 'name fields."
+  (when-let ((id (alist-get 'id story))
+             (name (alist-get 'name story)))
+    (puthash (format "%s" id)
+             `((id . ,id)
+               (name . ,name))
+             shortcut--story-cache)))
+
+(defun shortcut--story-cache-candidates ()
+  "Get a list of story candidates from cache for completing-read.
+Returns a list of story IDs (as strings without 'sc-' prefix)."
+  (let ((candidates '()))
+    (maphash (lambda (key _value)
+               (push key candidates))
+             shortcut--story-cache)
+    (sort candidates
+          (lambda (a b)
+            (> (string-to-number a) (string-to-number b))))))
+
 (defun shortcut--story-get (story-id)
-  "Get the JSON payload for a story with STORY-ID."
-  (shortcut--api-request (format "/stories/%s" story-id)))
+  "Get the JSON payload for a story with STORY-ID.
+Caches the story's ID and name in `shortcut--story-cache'."
+  (let ((story (shortcut--api-request (format "/stories/%s" story-id))))
+    (shortcut--story-cache-add story)
+    story))
 
 (defun shortcut--story-comments-get (story-id)
   "Get all comments for story with STORY-ID.
@@ -629,9 +658,35 @@ Builds a threaded view based on parent_id relationships."
       (shortcut--story-insert-description description)
       (shortcut--story-insert-comments comments))))
 
+(defun shortcut--story-affixation-function (candidates)
+  "Affixation function for story completion.
+CANDIDATES is a list of story IDs.
+Returns a list of (candidate prefix suffix) for each candidate."
+  (mapcar (lambda (candidate)
+            (let* ((story-data (gethash candidate shortcut--story-cache))
+                   (story-name (alist-get 'name story-data))
+                   (prefix (propertize (format "sc-" candidate)
+                                       'face 'shortcut-id))
+                   (suffix (if story-name
+                               (propertize (format " %s" story-name)
+                                           'face 'shortcut-story-title)
+                             "")))
+              (list (propertize candidate 'face 'shortcut-id) prefix suffix)))
+          candidates))
+
 (defun shortcut-story-get (story-id)
-  "Interactively get and display a Shortcut story by STORY-ID."
-  (interactive "nStory ID: ")
+  "Interactively get and display a Shortcut story by STORY-ID.
+When called interactively, prompts for the story ID using completing-read
+with cached story names as annotations."
+  (interactive
+   (let* ((candidates (shortcut--story-cache-candidates))
+          (completion-extra-properties
+           '(:affixation-function shortcut--story-affixation-function))
+          (input (completing-read "Story ID: " candidates nil nil))
+          (id (if (string-match "^sc-\\([0-9]+\\)$" input)
+                  (string-to-number (match-string 1 input))
+                (string-to-number input))))
+     (list id)))
   (let ((story (shortcut--story-get story-id)))
     (with-current-buffer (get-buffer-create (format "*Shortcut Story: sc-%s*" story-id))
       (let ((inhibit-read-only t))
