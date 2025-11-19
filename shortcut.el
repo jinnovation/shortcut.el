@@ -59,6 +59,10 @@ You can generate a token at https://app.shortcut.com/settings/account/api-tokens
   "Cache for member information.
 Keys are member IDs (as strings), values are member objects.")
 
+(defvar shortcut--workflow-cache (make-hash-table :test 'equal)
+  "Cache for workflow information.
+Keys are workflow IDs (as strings), values are workflow objects.")
+
 ;;; Faces
 
 (defface shortcut-story-title
@@ -149,6 +153,28 @@ Returns the member name as a string, or the ID if lookup fails."
             (alist-get 'name member)
             (format "%s" member-id)))
     (error (format "%s" member-id))))
+
+(defun shortcut--workflow-get (workflow-id)
+  "Get the JSON payload for workflow with WORKFLOW-ID.
+Returns the workflow as an alist parsed from JSON.
+Results are cached in `shortcut--workflow-cache'."
+  (let ((workflow-id-str (format "%s" workflow-id)))
+    (or (gethash workflow-id-str shortcut--workflow-cache)
+        (let ((workflow (shortcut--api-request (format "/workflows/%s" workflow-id-str))))
+          (puthash workflow-id-str workflow shortcut--workflow-cache)
+          workflow))))
+
+(defun shortcut--workflow-state-name (workflow-id workflow-state-id)
+  "Get the name of the workflow state with WORKFLOW-STATE-ID in WORKFLOW-ID.
+Returns the state name as a string, or \"Unknown\" if lookup fails."
+  (condition-case err
+      (let* ((workflow (shortcut--workflow-get workflow-id))
+             (states (alist-get 'states workflow))
+             (state (seq-find (lambda (s)
+                                (= (alist-get 'id s) workflow-state-id))
+                              states)))
+        (or (alist-get 'name state) "Unknown"))
+    (error "Unknown")))
 
 ;;; Story Mode
 
@@ -297,9 +323,9 @@ Optional FACE is applied to the value."
     (let* ((id (alist-get 'id story))
            (name (alist-get 'name story))
            (story-type (alist-get 'story_type story))
-           (workflow-state (alist-get 'workflow_state_id story))
-           ;; TODO: This needs to get the state name via workflow_state_id and workflow_id
-           (workflow-state-name (or (alist-get 'workflow_state_name story) "Unknown"))
+           (workflow-id (alist-get 'workflow_id story))
+           (workflow-state-id (alist-get 'workflow_state_id story))
+           (workflow-state-name (shortcut--workflow-state-name workflow-id workflow-state-id))
            (labels (alist-get 'labels story))
            (owners (alist-get 'owner_ids story))
            (estimate (alist-get 'estimate story))
