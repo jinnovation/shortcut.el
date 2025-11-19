@@ -344,10 +344,11 @@ Optional FACE is applied to the value."
            (tasks (alist-get 'tasks story))
            (app-url (alist-get 'app_url story)))
 
-      (insert (propertize (format "sc-%d" id) 'font-lock-face 'shortcut-id))
-      (insert " ")
-      (insert (propertize name 'font-lock-face 'shortcut-story-title))
-      (insert "\n\n")
+      ;; Set header line with story ID and title
+      (setq header-line-format
+            (concat (propertize (format "sc-%d" id) 'face 'shortcut-id)
+                    " "
+                    (propertize name 'face 'shortcut-story-title)))
 
       (magit-insert-section (overview)
         (magit-insert-heading "Overview")
