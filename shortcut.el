@@ -153,6 +153,14 @@ Returns a vector of comment objects."
   (let ((story (shortcut--story-get story-id)))
     (or (alist-get 'comments story) [])))
 
+(defun shortcut--story-task-update (story-id task-id complete)
+  "Update task TASK-ID in story STORY-ID with COMPLETE status.
+COMPLETE should be t or nil.  Returns the updated task."
+  (shortcut--api-request
+   (format "/stories/%s/tasks/%s" story-id task-id)
+   "PUT"
+   `((complete . ,(if complete t :json-false)))))
+
 (defun shortcut-member-get (member-id)
   "Get the JSON payload for member with MEMBER-ID.
 Returns the member as an alist parsed from JSON.
@@ -202,7 +210,6 @@ Returns the state name as a string, or \"Unknown\" if lookup fails."
     (define-key map (kbd "q") 'quit-window)
     (define-key map (kbd "g") 'shortcut-story-refresh)
     (define-key map (kbd "b") 'shortcut-story-browse-url)
-    (define-key map (kbd "RET") 'shortcut-story-browse-url)
     (define-key map (kbd "M-w") 'shortcut-story-copy-id)
     map)
   "Keymap for `shortcut-story-mode'.")
@@ -331,12 +338,27 @@ Optional FACE is applied to the value."
     (magit-insert-section (tasks)
       (magit-insert-heading "Tasks")
       (seq-doseq (task tasks)
-        (let* ((complete (eq :json-true (alist-get 'complete task)))
-               (description (alist-get 'description task)))
+        (let* ((complete (not (eq :json-false (alist-get 'complete task))))
+               (description (alist-get 'description task))
+               (task-id (alist-get 'id task)))
           (insert "  ")
-          (widget-create 'checkbox
-                         :value complete
-                         :inactive t)
+          (let ((widget-start (point)))
+            (widget-create 'checkbox
+                           :value complete
+                           :notify (lambda (widget &rest _)
+                                     (let ((new-value (widget-value widget)))
+                                       (condition-case err
+                                           (progn
+                                             (message "Updating task...")
+                                             (shortcut--story-task-update
+                                              shortcut-story--current-id
+                                              task-id
+                                              new-value)
+                                             (shortcut-story-refresh)
+                                             (message "Task updated successfully"))
+                                         (error
+                                          (message "Failed to update task: %s" (error-message-string err))
+                                          (shortcut-story-refresh)))))))
           (insert " ")
           (let ((formatted-desc (shortcut--fontify-markdown description)))
             (if complete
