@@ -161,6 +161,15 @@ COMPLETE should be t or nil.  Returns the updated task."
    "PUT"
    `((complete . ,(if complete t :json-false)))))
 
+(defun shortcut--story-update (story-id fields)
+  "Update story STORY-ID with FIELDS.
+FIELDS should be an alist of field names to values.
+Returns the updated story."
+  (shortcut--api-request
+   (format "/stories/%s" story-id)
+   "PUT"
+   fields))
+
 (defun shortcut-member-get (member-id)
   "Get the JSON payload for member with MEMBER-ID.
 Returns the member as an alist parsed from JSON.
@@ -203,6 +212,13 @@ Returns the state name as a string, or \"Unknown\" if lookup fails."
         (or (alist-get 'name state) "Unknown"))
     (error "Unknown")))
 
+(defun shortcut--workflow-states-get (workflow-id)
+  "Get all workflow states for WORKFLOW-ID.
+Returns a vector of state objects, each with 'id and 'name fields."
+  (let* ((workflow (shortcut--workflow-get workflow-id))
+         (states (alist-get 'states workflow)))
+    (or states [])))
+
 ;;; Story Mode
 
 (defun shortcut-story-ret ()
@@ -220,11 +236,54 @@ If on a widget, activate it.  Otherwise, browse the story URL."
     (define-key map (kbd "b") 'shortcut-story-browse-url)
     (define-key map (kbd "RET") 'shortcut-story-ret)
     (define-key map (kbd "M-w") 'shortcut-story-copy-id)
+    (define-key map (kbd "s") 'shortcut-story-set-state)
     map)
   "Keymap for `shortcut-story-mode'.")
 
 (defvar-local shortcut-story--current-id nil
   "The ID of the story currently displayed in this buffer.")
+
+(defvar-local shortcut-story--current-workflow-id nil
+  "The workflow ID of the story currently displayed in this buffer.")
+
+(defvar-local shortcut-story--current-workflow-state-id nil
+  "The current workflow state ID of the story displayed in this buffer.")
+
+(defun shortcut-story-set-state ()
+  "Change the workflow state of the current story.
+Prompts for a new state using completing-read from available workflow states."
+  (interactive)
+  (unless shortcut-story--current-id
+    (user-error "No story loaded in current buffer"))
+  (unless shortcut-story--current-workflow-id
+    (user-error "No workflow information available"))
+
+  (let* ((states (shortcut--workflow-states-get shortcut-story--current-workflow-id))
+         (current-state-name (when shortcut-story--current-workflow-state-id
+                               (shortcut--workflow-state-name
+                                shortcut-story--current-workflow-id
+                                shortcut-story--current-workflow-state-id)))
+         (state-alist (mapcar (lambda (state)
+                                (cons (alist-get 'name state)
+                                      (alist-get 'id state)))
+                              states))
+         (prompt (if current-state-name
+                     (format "Set state (current: %s): " current-state-name)
+                   "Set state: "))
+         (selected-name (completing-read prompt state-alist nil t))
+         (selected-id (alist-get selected-name state-alist nil nil #'string=)))
+
+    (when selected-id
+      (condition-case err
+          (progn
+            (message "Updating story state...")
+            (shortcut--story-update shortcut-story--current-id
+                                    `((workflow_state_id . ,selected-id)))
+            (shortcut-story-refresh)
+            (message "Story state updated to: %s" selected-name))
+        (error
+         (message "Failed to update story state: %s" (error-message-string err))
+         (shortcut-story-refresh))))))
 
 (define-derived-mode shortcut-story-mode magit-section-mode "Shortcut-Story"
                      "Major mode for viewing Shortcut stories.
@@ -508,6 +567,10 @@ Builds a threaded view based on parent_id relationships."
            (tasks (alist-get 'tasks story))
            (comments (alist-get 'comments story))
            (app-url (alist-get 'app_url story)))
+
+      ;; Set buffer-local variables for workflow state changes
+      (setq shortcut-story--current-workflow-id workflow-id)
+      (setq shortcut-story--current-workflow-state-id workflow-state-id)
 
       ;; Set header line with story ID and title
       (setq header-line-format
