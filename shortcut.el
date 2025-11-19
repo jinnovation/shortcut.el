@@ -85,6 +85,11 @@ Keys are workflow IDs (as strings), values are workflow objects.")
   "Face for completed stories."
   :group 'shortcut)
 
+(defface shortcut-story-state-blocked
+    '((t :inherit error))
+  "Face for blocked stories."
+  :group 'shortcut)
+
 (defface shortcut-story-label
     '((t :inherit bold))
   "Base face for story labels."
@@ -263,15 +268,20 @@ Prompts for a new state using completing-read from available workflow states."
                                (shortcut--workflow-state-name
                                 shortcut-story--current-workflow-id
                                 shortcut-story--current-workflow-state-id)))
+         ;; Create alist with propertized state names for display
          (state-alist (mapcar (lambda (state)
-                                (cons (alist-get 'name state)
-                                      (alist-get 'id state)))
+                                (let ((name (alist-get 'name state)))
+                                  (cons (propertize name 'face (shortcut--story-format-state name))
+                                        (alist-get 'id state))))
                               states))
          (prompt (if current-state-name
                      (format "Set state (current: %s): " current-state-name)
                    "Set state: "))
          (selected-name (completing-read prompt state-alist nil t))
-         (selected-id (alist-get selected-name state-alist nil nil #'string=)))
+         ;; Strip text properties from selected name to match original string
+         (selected-id (alist-get selected-name state-alist nil nil
+                                 (lambda (a b) (string= (substring-no-properties a)
+                                                        (substring-no-properties b))))))
 
     (when selected-id
       (condition-case err
@@ -336,6 +346,7 @@ Prompts for a new state using completing-read from available workflow states."
     ((or "unstarted" "to do" "backlog") 'shortcut-story-state-unstarted)
     ((or "started" "in progress" "in review") 'shortcut-story-state-started)
     ((or "done" "completed" "deployed") 'shortcut-story-state-done)
+    ((or "blocked" "on hold") 'shortcut-story-state-blocked)
     (_ 'shortcut-story-state-started)))
 
 (defun shortcut--story-insert-header (label value &optional face)
