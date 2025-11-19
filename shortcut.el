@@ -105,6 +105,16 @@ Keys are workflow IDs (as strings), values are workflow objects.")
   "Face for placeholder values in story buffers."
   :group 'shortcut)
 
+(defface shortcut-comment-author
+    '((t :inherit bold))
+  "Face for comment author names."
+  :group 'shortcut)
+
+(defface shortcut-comment-date
+    '((t :inherit font-lock-comment-face))
+  "Face for comment timestamps."
+  :group 'shortcut)
+
 ;;; API Utilities
 
 (defun shortcut--api-request (endpoint &optional method data)
@@ -136,6 +146,12 @@ METHOD defaults to GET.  Returns the parsed JSON response."
 (defun shortcut--story-get (story-id)
   "Get the JSON payload for a story with STORY-ID."
   (shortcut--api-request (format "/stories/%s" story-id)))
+
+(defun shortcut--story-comments-get (story-id)
+  "Get all comments for story with STORY-ID.
+Returns a vector of comment objects."
+  (let ((story (shortcut--story-get story-id)))
+    (or (alist-get 'comments story) [])))
 
 (defun shortcut-member-get (member-id)
   "Get the JSON payload for member with MEMBER-ID.
@@ -320,6 +336,77 @@ Optional FACE is applied to the value."
       (insert "\n")
       (widget-setup))))
 
+(defun shortcut--fontify-markdown (text)
+  "Fontify TEXT as markdown and return it as a string with text properties.
+Similar to Forge's markdown fontification."
+  (if (and text (not (string-empty-p text)))
+      (with-temp-buffer
+        (insert text)
+        (when (fboundp 'gfm-mode)
+          (delay-mode-hooks (gfm-mode)))
+        (font-lock-ensure)
+        ;; Convert face properties to font-lock-face for persistence
+        (let ((result (buffer-string))
+              (beg 0)
+              (end (length (buffer-string))))
+          (while (< beg end)
+            (let ((pos (next-single-property-change beg 'face result end))
+                  (val (get-text-property beg 'face result)))
+              (when val
+                (put-text-property beg pos 'font-lock-face val result)
+                (remove-text-properties beg pos '(face) result))
+              (setq beg pos)))
+          result))
+    ""))
+
+(defun shortcut--format-timestamp (timestamp)
+  "Format TIMESTAMP as a relative time string (e.g., '2 hours ago').
+TIMESTAMP should be an ISO 8601 string."
+  (if (not timestamp)
+      ""
+    (let* ((time (date-to-time timestamp))
+           (diff (time-subtract (current-time) time))
+           (seconds (time-to-seconds diff)))
+      (cond
+        ((< seconds 60) "just now")
+        ((< seconds 3600) (format "%d minutes ago" (/ seconds 60)))
+        ((< seconds 86400) (format "%d hours ago" (/ seconds 3600)))
+        ((< seconds 604800) (format "%d days ago" (/ seconds 86400)))
+        ((< seconds 2592000) (format "%d weeks ago" (/ seconds 604800)))
+        ((< seconds 31536000) (format "%d months ago" (/ seconds 2592000)))
+        (t (format "%d years ago" (/ seconds 31536000)))))))
+
+(defun shortcut--comment-insert-heading (comment)
+  "Insert the heading for COMMENT with author and timestamp."
+  (let* ((author-id (alist-get 'author_id comment))
+         (author-name (shortcut--member-name author-id))
+         (created-at (alist-get 'created_at comment))
+         (timestamp (shortcut--format-timestamp created-at)))
+    (insert (propertize author-name 'font-lock-face 'shortcut-comment-author))
+    (insert " ")
+    (insert (propertize timestamp 'font-lock-face 'shortcut-comment-date))
+    (insert "\n")))
+
+(defun shortcut--comment-insert-content (comment)
+  "Insert the content/body of COMMENT with markdown formatting."
+  (let ((text (alist-get 'text comment)))
+    (when (and text (not (string-empty-p text)))
+      (insert (shortcut--fontify-markdown text))
+      (insert "\n\n"))))
+
+(defun shortcut--story-insert-comment (comment)
+  "Insert a single COMMENT into the buffer."
+  (magit-insert-section (comment comment)
+    (shortcut--comment-insert-heading comment)
+    (shortcut--comment-insert-content comment)))
+
+(defun shortcut--story-insert-comments (comments)
+  "Insert all COMMENTS for the story."
+  (when (and comments (> (length comments) 0))
+    (magit-insert-section (comments)
+      (magit-insert-heading "Comments")
+      (seq-doseq (comment comments)
+        (shortcut--story-insert-comment comment)))))
 
 (defun shortcut--story-format-buffer (story)
   "Format STORY data into a readable buffer similar to Forge PR buffers."
@@ -342,6 +429,7 @@ Optional FACE is applied to the value."
            (completed-at (alist-get 'completed_at story))
            (description (alist-get 'description story))
            (tasks (alist-get 'tasks story))
+           (comments (alist-get 'comments story))
            (app-url (alist-get 'app_url story)))
 
       ;; Set header line with story ID and title
@@ -388,7 +476,9 @@ Optional FACE is applied to the value."
 
       (shortcut--story-insert-tasks tasks)
 
-      (shortcut--story-insert-description description))))
+      (shortcut--story-insert-description description)
+
+      (shortcut--story-insert-comments comments))))
 
 (defun shortcut-story-get (story-id)
   "Interactively get and display a Shortcut story by STORY-ID."
