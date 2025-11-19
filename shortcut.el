@@ -313,7 +313,7 @@ Optional FACE is applied to the value."
     (magit-insert-section (description)
       (magit-insert-heading "Description")
       (insert (shortcut--fontify-markdown description))
-      (insert "\n"))))
+      (insert "\n\n"))))
 
 (defun shortcut--story-insert-tasks (tasks)
   "Insert TASKS as a checklist using Emacs checkbox widgets."
@@ -376,37 +376,67 @@ TIMESTAMP should be an ISO 8601 string."
         ((< seconds 31536000) (format "%d months ago" (/ seconds 2592000)))
         (t (format "%d years ago" (/ seconds 31536000)))))))
 
-(defun shortcut--comment-insert-heading (comment)
-  "Insert the heading for COMMENT with author and timestamp."
+(defun shortcut--comment-insert-heading (comment &optional indent)
+  "Insert the heading for COMMENT with author and timestamp.
+Optional INDENT specifies the indentation level in spaces."
   (let* ((author-id (alist-get 'author_id comment))
          (author-name (shortcut--member-name author-id))
          (created-at (alist-get 'created_at comment))
-         (timestamp (shortcut--format-timestamp created-at)))
+         (timestamp (shortcut--format-timestamp created-at))
+         (indent-str (if indent (make-string indent ?\s) "")))
+    (insert indent-str)
     (insert (propertize author-name 'font-lock-face 'shortcut-comment-author))
     (insert " ")
     (insert (propertize timestamp 'font-lock-face 'shortcut-comment-date))
     (insert "\n")))
 
-(defun shortcut--comment-insert-content (comment)
-  "Insert the content/body of COMMENT with markdown formatting."
+(defun shortcut--comment-insert-content (comment &optional indent)
+  "Insert the content/body of COMMENT with markdown formatting.
+Optional INDENT specifies the indentation level in spaces."
   (let ((text (alist-get 'text comment)))
     (when (and text (not (string-empty-p text)))
-      (insert (shortcut--fontify-markdown text))
+      (let ((content (shortcut--fontify-markdown text)))
+        (if indent
+            ;; Apply indentation to each line of the content
+            (let ((indent-str (make-string indent ?\s)))
+              (insert (string-join
+                       (mapcar (lambda (line) (concat indent-str line))
+                               (split-string content "\n"))
+                       "\n")))
+          (insert content)))
       (insert "\n\n"))))
 
-(defun shortcut--story-insert-comment (comment)
-  "Insert a single COMMENT into the buffer."
-  (magit-insert-section (comment comment)
-    (shortcut--comment-insert-heading comment)
-    (shortcut--comment-insert-content comment)))
+(defun shortcut--story-insert-comment (comment all-comments &optional indent)
+  "Insert a single COMMENT into the buffer with optional INDENT level.
+ALL-COMMENTS is the full list of comments to find replies.
+INDENT specifies the number of spaces to indent nested replies.
+Recursively inserts any nested reply comments based on parent_id."
+  (let ((comment-id (alist-get 'id comment)))
+    (magit-insert-section (comment comment)
+      (shortcut--comment-insert-heading comment indent)
+      (shortcut--comment-insert-content comment indent)
+      ;; Find and recursively insert replies (comments with this comment's id as parent_id)
+      (let ((replies (seq-filter (lambda (c)
+                                   (equal (alist-get 'parent_id c) comment-id))
+                                 all-comments)))
+        (when replies
+          (seq-doseq (reply replies)
+            (shortcut--story-insert-comment reply all-comments (+ (or indent 0) 4))))))))
 
 (defun shortcut--story-insert-comments (comments)
-  "Insert all COMMENTS for the story."
+  "Insert all COMMENTS for the story.
+Builds a threaded view based on parent_id relationships."
   (when (and comments (> (length comments) 0))
     (magit-insert-section (comments)
       (magit-insert-heading "Comments")
-      (seq-doseq (comment comments)
-        (shortcut--story-insert-comment comment)))))
+      ;; Insert only top-level comments (those without a parent_id or with null parent_id)
+      (let ((top-level-comments (seq-filter (lambda (c)
+                                              (let ((parent-id (alist-get 'parent_id c)))
+                                                (or (null parent-id)
+                                                    (eq parent-id :null))))
+                                            comments)))
+        (seq-doseq (comment top-level-comments)
+          (shortcut--story-insert-comment comment comments))))))
 
 (defun shortcut--story-format-buffer (story)
   "Format STORY data into a readable buffer similar to Forge PR buffers."
@@ -475,9 +505,7 @@ TIMESTAMP should be an ISO 8601 string."
         (insert "\n"))
 
       (shortcut--story-insert-tasks tasks)
-
       (shortcut--story-insert-description description)
-
       (shortcut--story-insert-comments comments))))
 
 (defun shortcut-story-get (story-id)
