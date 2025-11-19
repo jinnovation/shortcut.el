@@ -5,7 +5,7 @@
 ;; Author: Jonathan Jin <me@jonathanj.in>
 ;; URL: https://github.com/jinnovation/shortcut.el
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "27.1") (transient "0.3.0"))
+;; Package-Requires: ((emacs "27.1") (transient "0.3.0") (magit-section "3.3.0"))
 ;; Keywords: tools, convenience, project, project-management
 
 ;; This file is not part of GNU Emacs.
@@ -34,6 +34,7 @@
 (require 'url)
 (require 'json)
 (require 'transient)
+(require 'magit-section)
 
 (defgroup shortcut nil
   "Emacs integration for Shortcut project management."
@@ -90,10 +91,7 @@ Keys are member IDs (as strings), values are member objects.")
   "Face for story header fields."
   :group 'shortcut)
 
-(defface shortcut-story-metadata
-    '((t :inherit default))
-  "Face for story metadata values."
-  :group 'shortcut)
+
 
 (defface shortcut-placeholder
     '((t :inherit font-lock-comment-face))
@@ -166,15 +164,13 @@ Returns the member name as a string, or the ID if lookup fails."
 (defvar-local shortcut-story--current-id nil
   "The ID of the story currently displayed in this buffer.")
 
-(define-derived-mode shortcut-story-mode special-mode "Shortcut-Story"
+(define-derived-mode shortcut-story-mode magit-section-mode "Shortcut-Story"
                      "Major mode for viewing Shortcut stories.
 
 \\{shortcut-story-mode-map}"
                      :group 'shortcut
                      (setq truncate-lines t)
-                     (setq buffer-read-only t)
-                     (goto-address-mode +1)
-                     (font-lock-mode -1))
+                     (goto-address-mode +1))
 
 (defun shortcut-story-refresh ()
   "Refresh the current story buffer."
@@ -213,8 +209,9 @@ Optional FACE is applied to the value."
   (when value
     (insert (propertize (format "%-15s" (concat label ":"))
                         'face 'shortcut-story-header))
-    (insert (propertize (format "%s" value)
-                        'face (or face 'shortcut-story-metadata)))
+    (insert (if face
+                (propertize (format "%s" value) 'face face)
+              (format "%s" value)))
     (insert "\n")))
 
 (defun shortcut--story-insert-labels (labels)
@@ -270,7 +267,6 @@ Optional FACE is applied to the value."
   (when (and description (not (string-empty-p description)))
     (insert "\n")
     (insert (propertize "Description\n" 'face 'shortcut-story-header))
-    (insert (make-string 80 ?─))
     (insert "\n\n")
     (insert description)
     (insert "\n")))
@@ -278,97 +274,100 @@ Optional FACE is applied to the value."
 (defun shortcut--story-insert-tasks (tasks)
   "Insert TASKS as a checklist using Emacs checkbox widgets."
   (when (and tasks (> (length tasks) 0))
-    (insert "\n")
-    (insert (propertize "Tasks\n" 'face 'shortcut-story-header))
-    (insert (make-string 80 ?─))
-    (insert "\n\n")
-    (seq-doseq (task tasks)
-      (let* ((complete (eq :json-true (alist-get 'complete task)))
-             (description (alist-get 'description task)))
-        (insert "  ")
-        (widget-create 'checkbox
-                       :value complete
-                       :inactive t)
-        (insert " ")
-        (if complete
-            (insert (propertize description 'face 'shortcut-placeholder))
-          (insert description))
-        (insert "\n")))
-    (insert "\n")
-    (widget-setup)))
+    (magit-insert-section (tasks)
+      (magit-insert-heading "Tasks")
+      (seq-doseq (task tasks)
+        (let* ((complete (eq :json-true (alist-get 'complete task)))
+               (description (alist-get 'description task)))
+          (insert "  ")
+          (widget-create 'checkbox
+                         :value complete
+                         :inactive t)
+          (insert " ")
+          (if complete
+              (insert (propertize description 'face 'shortcut-placeholder))
+            (insert description))
+          (insert "\n")))
+      (insert "\n")
+      (widget-setup))))
 
 (defun shortcut--story-format-buffer (story)
   "Format STORY data into a readable buffer similar to Forge PR buffers."
-  (let* ((id (alist-get 'id story))
-         (name (alist-get 'name story))
-         (story-type (alist-get 'story_type story))
-         (workflow-state (alist-get 'workflow_state_id story))
-         ;; TODO: This needs to get the state name via workflow_state_id and workflow_id
-         (workflow-state-name (or (alist-get 'workflow_state_name story) "Unknown"))
-         (labels (alist-get 'labels story))
-         (owners (alist-get 'owner_ids story))
-         (estimate (alist-get 'estimate story))
-         (epic-id (alist-get 'epic_id story))
-         (iteration-id (alist-get 'iteration_id story))
-         (deadline (alist-get 'deadline story))
-         (created-at (alist-get 'created_at story))
-         (updated-at (alist-get 'updated_at story))
-         (completed-at (alist-get 'completed_at story))
-         (description (alist-get 'description story))
-         (tasks (alist-get 'tasks story))
-         (app-url (alist-get 'app_url story)))
+  (magit-insert-section (story story)
+    (let* ((id (alist-get 'id story))
+           (name (alist-get 'name story))
+           (story-type (alist-get 'story_type story))
+           (workflow-state (alist-get 'workflow_state_id story))
+           ;; TODO: This needs to get the state name via workflow_state_id and workflow_id
+           (workflow-state-name (or (alist-get 'workflow_state_name story) "Unknown"))
+           (labels (alist-get 'labels story))
+           (owners (alist-get 'owner_ids story))
+           (estimate (alist-get 'estimate story))
+           (epic-id (alist-get 'epic_id story))
+           (iteration-id (alist-get 'iteration_id story))
+           (deadline (alist-get 'deadline story))
+           (created-at (alist-get 'created_at story))
+           (updated-at (alist-get 'updated_at story))
+           (completed-at (alist-get 'completed_at story))
+           (description (alist-get 'description story))
+           (tasks (alist-get 'tasks story))
+           (app-url (alist-get 'app_url story)))
 
-    ;; Insert header line (title)
-    (insert (propertize (format "sc-%d" id)
-                        'face (shortcut--story-format-state workflow-state-name)))
-    (insert " ")
-    (insert (propertize name 'face 'shortcut-story-title))
-    (insert "\n")
-    (insert (make-string 80 ?─))
-    (insert "\n\n")
+      ;; Insert header line (title)
+      (insert (propertize (format "sc-%d" id)
+                          'face (shortcut--story-format-state workflow-state-name)))
+      (insert " ")
+      (insert (propertize name 'face 'shortcut-story-title))
+      (insert "\n\n")
 
-    ;; Insert metadata headers
-    (shortcut--story-insert-header "Type" (upcase story-type))
-    (shortcut--story-insert-header "State" workflow-state-name
-                                   (shortcut--story-format-state workflow-state-name))
-    (when estimate
-      (shortcut--story-insert-header "Estimate" (format "%d points" estimate)))
-    (when epic-id
-      (shortcut--story-insert-header "Epic" (format "sc-%d" epic-id)))
-    (when iteration-id
-      (shortcut--story-insert-header "Iteration" (format "sc-%d" iteration-id)))
+      ;; Insert Overview section with all metadata
+      (magit-insert-section (overview)
+        (magit-insert-heading "Overview")
 
-    ;; Insert labels
-    (shortcut--story-insert-labels labels)
+        ;; Insert metadata headers
+        (shortcut--story-insert-header "Type" (upcase story-type))
+        (shortcut--story-insert-header "State" workflow-state-name
+                                       (shortcut--story-format-state workflow-state-name))
+        (when estimate
+          (shortcut--story-insert-header "Estimate" (format "%d points" estimate)))
+        (when epic-id
+          (shortcut--story-insert-header "Epic" (format "sc-%d" epic-id)))
+        (when iteration-id
+          (shortcut--story-insert-header "Iteration" (format "sc-%d" iteration-id)))
 
-    ;; Insert owners (if available from story data)
-    (when owners
-      (shortcut--story-insert-header "Owners"
-                                     (mapconcat #'shortcut--member-name
-                                                owners ", ")))
+        ;; Insert labels
+        (shortcut--story-insert-labels labels)
 
-    ;; Insert deadline
-    (if deadline
-        (shortcut--story-insert-header "Deadline" (shortcut--story-format-timestamp deadline))
-      (shortcut--story-insert-header "Deadline"
-                                     "(none)"
-                                     'shortcut-placeholder))
+        ;; Insert owners (if available from story data)
+        (when owners
+          (shortcut--story-insert-header "Owners"
+                                         (mapconcat #'shortcut--member-name
+                                                    owners ", ")))
 
-    ;; Insert timestamps
-    (shortcut--story-insert-header "Created" (shortcut--story-format-timestamp created-at))
-    (shortcut--story-insert-header "Updated" (shortcut--story-format-timestamp updated-at))
-    (when completed-at
-      (shortcut--story-insert-header "Completed" (shortcut--story-format-timestamp completed-at)))
+        ;; Insert deadline
+        (if deadline
+            (shortcut--story-insert-header "Deadline" (shortcut--story-format-timestamp deadline))
+          (shortcut--story-insert-header "Deadline"
+                                         "(none)"
+                                         'shortcut-placeholder))
 
-    ;; Insert URL
-    (when app-url
-      (shortcut--story-insert-header "URL" app-url))
+        ;; Insert timestamps
+        (shortcut--story-insert-header "Created" (shortcut--story-format-timestamp created-at))
+        (shortcut--story-insert-header "Updated" (shortcut--story-format-timestamp updated-at))
+        (when completed-at
+          (shortcut--story-insert-header "Completed" (shortcut--story-format-timestamp completed-at)))
 
-    ;; Insert tasks
-    (shortcut--story-insert-tasks tasks)
+        ;; Insert URL
+        (when app-url
+          (shortcut--story-insert-header "URL" app-url))
 
-    ;; Insert description
-    (shortcut--story-insert-description description)))
+        (insert "\n"))
+
+      ;; Insert tasks
+      (shortcut--story-insert-tasks tasks)
+
+      ;; Insert description
+      (shortcut--story-insert-description description))))
 
 (defun shortcut-story-get (story-id)
   "Interactively get and display a Shortcut story by STORY-ID."
