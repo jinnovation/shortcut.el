@@ -174,6 +174,35 @@ Returns a list of story IDs (as strings without 'sc-' prefix)."
           (lambda (a b)
             (> (string-to-number a) (string-to-number b))))))
 
+(defun shortcut--stories-search (input)
+  "Search for stories using the Shortcut Search API with INPUT string.
+Returns a list of story IDs as strings.
+Caches retrieved stories in `shortcut--story-cache'."
+  (condition-case err
+      (let* ((query (if (string-empty-p input)
+                        "is:story"
+                      (format "is:story %s" input)))
+             (body `((query . ,query)
+                     (entity_types . ["story"])
+                     (page_size . 50)))
+             (response (shortcut--api-request "/search" "GET" body))
+             (stories (alist-get 'data (alist-get 'stories response)))
+             (story-ids '()))
+        ;; Cache each story and collect IDs
+        (when stories
+          (seq-doseq (story stories)
+            (shortcut--story-cache-add story)
+            (when-let ((id (alist-get 'id story)))
+              (push (format "%s" id) story-ids))))
+        ;; Return in descending order (most recent first)
+        (sort story-ids
+              (lambda (a b)
+                (> (string-to-number a) (string-to-number b)))))
+    (error
+     ;; On error, return empty list and optionally log
+     (message "Shortcut search API error: %s" (error-message-string err))
+     '())))
+
 (defun shortcut--story-get (story-id)
   "Get the JSON payload for a story with STORY-ID.
 Caches the story's ID and name in `shortcut--story-cache'."
