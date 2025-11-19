@@ -91,11 +91,14 @@ Keys are workflow IDs (as strings), values are workflow objects.")
   :group 'shortcut)
 
 (defface shortcut-story-header
-    '((t :weight bold :foreground "cyan"))
+    '((t :inherit default))
   "Face for story header fields."
   :group 'shortcut)
 
-
+(defface shortcut-id
+    '((t :foreground "#dbac66"))
+  "Face for story or epic IDs."
+  :group 'shortcut)
 
 (defface shortcut-placeholder
     '((t :inherit font-lock-comment-face))
@@ -234,16 +237,16 @@ Returns the state name as a string, or \"Unknown\" if lookup fails."
 Optional FACE is applied to the value."
   (when value
     (insert (propertize (format "%-15s" (concat label ":"))
-                        'face 'shortcut-story-header))
+                        'font-lock-face 'shortcut-story-header))
     (insert (if face
-                (propertize (format "%s" value) 'face face)
+                (propertize (format "%s" value) 'font-lock-face face)
               (format "%s" value)))
     (insert "\n")))
 
 (defun shortcut--story-insert-labels (labels)
   "Insert formatted LABELS with colored backgrounds."
   (when (and labels (> (length labels) 0))
-    (insert (propertize "Labels:         " 'face 'shortcut-story-header))
+    (insert (propertize "Labels:         " 'font-lock-face 'shortcut-story-header))
     (let ((first t))
       (seq-doseq (label labels)
         (let* ((name (alist-get 'name label))
@@ -263,9 +266,9 @@ Optional FACE is applied to the value."
             (let ((o (make-overlay start (point))))
               (overlay-put o 'priority 2)
               (overlay-put o 'evaporate t)
-              (overlay-put o 'face `(:background ,background
-                                                 :foreground ,foreground
-                                                 :weight bold))
+              (overlay-put o 'font-lock-face `(:background ,background
+                                                           :foreground ,foreground
+                                                           :weight bold))
               (when description
                 (overlay-put o 'help-echo description)))))))
     (insert "\n")))
@@ -292,7 +295,7 @@ Optional FACE is applied to the value."
   "Insert the story DESCRIPTION with proper formatting."
   (when (and description (not (string-empty-p description)))
     (insert "\n")
-    (insert (propertize "Description\n" 'face 'shortcut-story-header))
+    (insert (propertize "Description\n" 'font-lock-face 'shortcut-story-header))
     (insert "\n\n")
     (insert description)
     (insert "\n")))
@@ -311,14 +314,16 @@ Optional FACE is applied to the value."
                          :inactive t)
           (insert " ")
           (if complete
-              (insert (propertize description 'face 'shortcut-placeholder))
+              (insert (propertize description 'font-lock-face 'shortcut-placeholder))
             (insert description))
           (insert "\n")))
       (insert "\n")
       (widget-setup))))
 
+
 (defun shortcut--story-format-buffer (story)
   "Format STORY data into a readable buffer similar to Forge PR buffers."
+
   (magit-insert-section (story story)
     (let* ((id (alist-get 'id story))
            (name (alist-get 'name story))
@@ -339,10 +344,9 @@ Optional FACE is applied to the value."
            (tasks (alist-get 'tasks story))
            (app-url (alist-get 'app_url story)))
 
-      (insert (propertize (format "sc-%d" id)
-                          'face (shortcut--story-format-state workflow-state-name)))
+      (insert (propertize (format "sc-%d" id) 'font-lock-face 'shortcut-id))
       (insert " ")
-      (insert (propertize name 'face 'shortcut-story-title))
+      (insert (propertize name 'font-lock-face 'shortcut-story-title))
       (insert "\n\n")
 
       (magit-insert-section (overview)
@@ -354,9 +358,9 @@ Optional FACE is applied to the value."
         (when estimate
           (shortcut--story-insert-header "Estimate" (format "%d points" estimate)))
         (when epic-id
-          (shortcut--story-insert-header "Epic" (format "sc-%d" epic-id)))
+          (shortcut--story-insert-header "Epic" (format "sc-%d" epic-id) 'shortcut-id))
         (when iteration-id
-          (shortcut--story-insert-header "Iteration" (format "sc-%d" iteration-id)))
+          (shortcut--story-insert-header "Iteration" (format "sc-%d" iteration-id) 'shortcut-id))
 
         (shortcut--story-insert-labels labels)
 
