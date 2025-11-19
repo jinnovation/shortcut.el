@@ -165,14 +165,24 @@ STORY should be an alist with at least 'id and 'name fields."
 
 (defun shortcut--story-cache-candidates ()
   "Get a list of story candidates from cache for completing-read.
-Returns a list of story IDs (as strings without 'sc-' prefix)."
+Returns an alist where keys are 'ID TITLE' strings for matching,
+and values are the story IDs (as strings without 'sc-' prefix)."
   (let ((candidates '()))
-    (maphash (lambda (key _value)
-               (push key candidates))
+    (maphash (lambda (key value)
+               (let* ((id key)
+                      (name (alist-get 'name value))
+                      ;; Create a key with ID and title for filtering
+                      (display-key (if name
+                                       (format "%s %s"
+                                               (propertize id 'face 'shortcut-id)
+                                               name)
+                                     id)))
+                 (push (cons display-key id) candidates)))
              shortcut--story-cache)
     (sort candidates
           (lambda (a b)
-            (> (string-to-number a) (string-to-number b))))))
+            (> (string-to-number (cdr a))
+               (string-to-number (cdr b)))))))
 
 (defun shortcut--stories-search (input)
   "Search for stories using the Shortcut Search API with INPUT string.
@@ -689,18 +699,11 @@ Builds a threaded view based on parent_id relationships."
 
 (defun shortcut--story-affixation-function (candidates)
   "Affixation function for story completion.
-CANDIDATES is a list of story IDs.
-Returns a list of (candidate prefix suffix) for each candidate."
+CANDIDATES is a list of display keys from the alist (strings in format 'ID TITLE').
+Returns a list of (candidate prefix suffix) for each candidate, adding 'sc-' prefix."
   (mapcar (lambda (candidate)
-            (let* ((story-data (gethash candidate shortcut--story-cache))
-                   (story-name (alist-get 'name story-data))
-                   (prefix (propertize (format "sc-" candidate)
-                                       'face 'shortcut-id))
-                   (suffix (if story-name
-                               (propertize (format " %s" story-name)
-                                           'face 'shortcut-story-title)
-                             "")))
-              (list (propertize candidate 'face 'shortcut-id) prefix suffix)))
+            (let ((prefix (propertize "sc-" 'face 'shortcut-id)))
+              (list candidate prefix "")))
           candidates))
 
 (defun shortcut-story-get (story-id)
@@ -711,10 +714,11 @@ with cached story names as annotations."
    (let* ((candidates (shortcut--story-cache-candidates))
           (completion-extra-properties
            '(:affixation-function shortcut--story-affixation-function))
-          (input (completing-read "Story ID: " candidates nil nil))
-          (id (if (string-match "^sc-\\([0-9]+\\)$" input)
-                  (string-to-number (match-string 1 input))
-                (string-to-number input))))
+          ;; completing-read returns the alist value (the ID string) when given an alist
+          (id-str (completing-read "Story ID: " candidates nil nil))
+          (id (if (string-match "^sc-\\([0-9]+\\)$" id-str)
+                  (string-to-number (match-string 1 id-str))
+                (string-to-number id-str))))
      (list id)))
   (let ((story (shortcut--story-get story-id)))
     (with-current-buffer (get-buffer-create (format "*Shortcut Story: sc-%s*" story-id))
