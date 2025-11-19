@@ -203,6 +203,7 @@ Returns the state name as a string, or \"Unknown\" if lookup fails."
     (define-key map (kbd "g") 'shortcut-story-refresh)
     (define-key map (kbd "b") 'shortcut-story-browse-url)
     (define-key map (kbd "RET") 'shortcut-story-browse-url)
+    (define-key map (kbd "M-w") 'shortcut-story-copy-id)
     map)
   "Keymap for `shortcut-story-mode'.")
 
@@ -237,6 +238,15 @@ Returns the state name as a string, or \"Unknown\" if lookup fails."
       (if url
           (browse-url url)
         (message "No URL available for this story")))))
+
+(defun shortcut-story-copy-id ()
+  "Copy the current story ID to the kill ring."
+  (interactive)
+  (if shortcut-story--current-id
+      (let ((id-string (format "sc-%d" shortcut-story--current-id)))
+        (kill-new id-string)
+        (message "Copied %s to kill ring" id-string))
+    (message "No story ID available")))
 
 ;;; Story Buffer Formatting
 
@@ -427,16 +437,17 @@ Recursively inserts any nested reply comments based on parent_id."
   "Insert all COMMENTS for the story.
 Builds a threaded view based on parent_id relationships."
   (when (and comments (> (length comments) 0))
-    (magit-insert-section (comments)
+    (magit-insert-section (comments nil t)
       (magit-insert-heading "Comments")
-      ;; Insert only top-level comments (those without a parent_id or with null parent_id)
-      (let ((top-level-comments (seq-filter (lambda (c)
-                                              (let ((parent-id (alist-get 'parent_id c)))
-                                                (or (null parent-id)
-                                                    (eq parent-id :null))))
-                                            comments)))
-        (seq-doseq (comment top-level-comments)
-          (shortcut--story-insert-comment comment comments))))))
+      (magit-insert-section-body
+        ;; Insert only top-level comments (those without a parent_id or with null parent_id)
+        (let ((top-level-comments (seq-filter (lambda (c)
+                                                (let ((parent-id (alist-get 'parent_id c)))
+                                                  (or (null parent-id)
+                                                      (eq parent-id :null))))
+                                              comments)))
+          (seq-doseq (comment top-level-comments)
+            (shortcut--story-insert-comment comment comments)))))))
 
 (defun shortcut--story-format-buffer (story)
   "Format STORY data into a readable buffer similar to Forge PR buffers."
