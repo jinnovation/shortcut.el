@@ -313,18 +313,15 @@ Optional FACE is applied to the value."
            (tasks (alist-get 'tasks story))
            (app-url (alist-get 'app_url story)))
 
-      ;; Insert header line (title)
       (insert (propertize (format "sc-%d" id)
                           'face (shortcut--story-format-state workflow-state-name)))
       (insert " ")
       (insert (propertize name 'face 'shortcut-story-title))
       (insert "\n\n")
 
-      ;; Insert Overview section with all metadata
       (magit-insert-section (overview)
         (magit-insert-heading "Overview")
 
-        ;; Insert metadata headers
         (shortcut--story-insert-header "Type" (upcase story-type))
         (shortcut--story-insert-header "State" workflow-state-name
                                        (shortcut--story-format-state workflow-state-name))
@@ -335,38 +332,31 @@ Optional FACE is applied to the value."
         (when iteration-id
           (shortcut--story-insert-header "Iteration" (format "sc-%d" iteration-id)))
 
-        ;; Insert labels
         (shortcut--story-insert-labels labels)
 
-        ;; Insert owners (if available from story data)
         (when owners
           (shortcut--story-insert-header "Owners"
                                          (mapconcat #'shortcut--member-name
                                                     owners ", ")))
 
-        ;; Insert deadline
         (if deadline
             (shortcut--story-insert-header "Deadline" (shortcut--story-format-timestamp deadline))
           (shortcut--story-insert-header "Deadline"
                                          "(none)"
                                          'shortcut-placeholder))
 
-        ;; Insert timestamps
         (shortcut--story-insert-header "Created" (shortcut--story-format-timestamp created-at))
         (shortcut--story-insert-header "Updated" (shortcut--story-format-timestamp updated-at))
         (when completed-at
           (shortcut--story-insert-header "Completed" (shortcut--story-format-timestamp completed-at)))
 
-        ;; Insert URL
         (when app-url
           (shortcut--story-insert-header "URL" app-url))
 
         (insert "\n"))
 
-      ;; Insert tasks
       (shortcut--story-insert-tasks tasks)
 
-      ;; Insert description
       (shortcut--story-insert-description description))))
 
 (defun shortcut-story-get (story-id)
