@@ -532,13 +532,45 @@ Builds a threaded view based on parent_id relationships."
         (goto-char (point-min))
         (display-buffer (current-buffer))))))
 
+;;; Member and Workspace Functions
+
+(defvar shortcut--current-member-cache nil
+  "Cached current member information including workspace details.")
+
+(defun shortcut--member-current ()
+  "Get the current member information.
+Returns the member as an alist parsed from JSON.
+Results are cached in `shortcut--current-member-cache'."
+  (or shortcut--current-member-cache
+      (let ((member (shortcut--api-request "/member")))
+        (setq shortcut--current-member-cache member)
+        member)))
+
+(defun shortcut--workspace-name ()
+  "Get the name of the current workspace.
+Returns the workspace name as a string, or \"Unknown\" if lookup fails."
+  (condition-case err
+      (let* ((member (shortcut--member-current))
+             (workspace (alist-get 'workspace2 member)))
+        (or (alist-get 'name workspace) "Unknown"))
+    (error "Unknown")))
+
+(defun shortcut--current-user-name ()
+  "Get the name of the current authenticated user.
+Returns the user name as a string, or \"Unknown\" if lookup fails."
+  (condition-case err
+      (or (alist-get 'name (shortcut--member-current)) "Unknown")
+    (error "Unknown")))
+
 ;;; Transient Interface
 
 (transient-define-prefix shortcut-dispatch ()
   "Work with Shortcut."
-  ["Shortcut"
-   ["Stories"
-    ("s" "Get story" shortcut-story-get)]])
+  [:description (lambda () (format "Shortcut: %s (%s)"
+                                   (shortcut--workspace-name)
+                                   (shortcut--current-user-name)))
+                ["Stories"
+                 ("s" "Get story" shortcut-story-get)]])
 
 (provide 'shortcut)
 
