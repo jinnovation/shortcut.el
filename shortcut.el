@@ -128,6 +128,10 @@ METHOD defaults to GET.  Returns the parsed JSON response."
 
 ;;; Member Functions
 
+(defun shortcut--story-get (story-id)
+  "Get the JSON payload for a story with STORY-ID."
+  (shortcut--api-request (format "/stories/%s" story-id)))
+
 (defun shortcut-member-get (member-id)
   "Get the JSON payload for member with MEMBER-ID.
 Returns the member as an alist parsed from JSON.
@@ -177,7 +181,7 @@ Returns the member name as a string, or the ID if lookup fails."
   (interactive)
   (when shortcut-story--current-id
     (let ((inhibit-read-only t)
-          (story (shortcut-story-get shortcut-story--current-id))
+          (story (shortcut--story-get shortcut-story--current-id))
           (pos (point)))
       (erase-buffer)
       (shortcut--story-format-buffer story)
@@ -187,7 +191,7 @@ Returns the member name as a string, or the ID if lookup fails."
   "Open the current story in a web browser."
   (interactive)
   (when shortcut-story--current-id
-    (let* ((story (shortcut-story-get shortcut-story--current-id))
+    (let* ((story (shortcut--story-get shortcut-story--current-id))
            (url (alist-get 'app_url story)))
       (if url
           (browse-url url)
@@ -369,7 +373,7 @@ Optional FACE is applied to the value."
 (defun shortcut-story-get (story-id)
   "Interactively get and display a Shortcut story by STORY-ID."
   (interactive "nStory ID: ")
-  (let ((story (shortcut--api-request (format "/stories/%s" story-id))))
+  (let ((story (shortcut--story-get story-id)))
     (with-current-buffer (get-buffer-create (format "*Shortcut Story: sc-%s*" story-id))
       (let ((inhibit-read-only t))
         (erase-buffer)
