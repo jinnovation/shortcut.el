@@ -205,11 +205,20 @@ Returns the state name as a string, or \"Unknown\" if lookup fails."
 
 ;;; Story Mode
 
+(defun shortcut-story-ret ()
+  "Handle RET in story buffer.
+If on a widget, activate it.  Otherwise, browse the story URL."
+  (interactive)
+  (if (get-char-property (point) 'button)
+      (widget-button-press (point))
+    (shortcut-story-browse-url)))
+
 (defvar shortcut-story-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "q") 'quit-window)
     (define-key map (kbd "g") 'shortcut-story-refresh)
     (define-key map (kbd "b") 'shortcut-story-browse-url)
+    (define-key map (kbd "RET") 'shortcut-story-ret)
     (define-key map (kbd "M-w") 'shortcut-story-copy-id)
     map)
   "Keymap for `shortcut-story-mode'.")
@@ -223,7 +232,12 @@ Returns the state name as a string, or \"Unknown\" if lookup fails."
 \\{shortcut-story-mode-map}"
                      :group 'shortcut
                      (setq truncate-lines t)
-                     (goto-address-mode +1))
+                     (goto-address-mode +1)
+                     ;; Enable widget minor mode for checkbox interaction
+                     (setq-local widget-push-button-prefix "")
+                     (setq-local widget-push-button-suffix "")
+                     (setq-local widget-link-prefix "")
+                     (setq-local widget-link-suffix ""))
 
 (defun shortcut-story-refresh ()
   "Refresh the current story buffer."
