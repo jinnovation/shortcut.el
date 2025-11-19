@@ -6,3 +6,8 @@
   function that gets a story should be called `shortcut-story-get`, not `shortcut-get-story`. In
   line with Emacs convention, use double-hyphens to denote "private" functions and variables,
   e.g. `shortcut--story-get`.
+
+## Reference Implementations
+
+- In general, base your implementations and designs off of the following Emacs packages: Magit and
+  Forge. Their implementations can be found on GitHub.
