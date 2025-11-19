@@ -310,11 +310,10 @@ Optional FACE is applied to the value."
 (defun shortcut--story-insert-description (description)
   "Insert the story DESCRIPTION with proper formatting."
   (when (and description (not (string-empty-p description)))
-    (insert "\n")
-    (insert (propertize "Description\n" 'font-lock-face 'shortcut-story-header))
-    (insert "\n\n")
-    (insert description)
-    (insert "\n")))
+    (magit-insert-section (description)
+      (magit-insert-heading "Description")
+      (insert (shortcut--fontify-markdown description))
+      (insert "\n"))))
 
 (defun shortcut--story-insert-tasks (tasks)
   "Insert TASKS as a checklist using Emacs checkbox widgets."
@@ -329,9 +328,10 @@ Optional FACE is applied to the value."
                          :value complete
                          :inactive t)
           (insert " ")
-          (if complete
-              (insert (propertize description 'font-lock-face 'shortcut-placeholder))
-            (insert description))
+          (let ((formatted-desc (shortcut--fontify-markdown description)))
+            (if complete
+                (insert (propertize formatted-desc 'font-lock-face 'shortcut-placeholder))
+              (insert formatted-desc)))
           (insert "\n")))
       (insert "\n")
       (widget-setup))))
