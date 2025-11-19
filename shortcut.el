@@ -112,15 +112,19 @@ METHOD defaults to GET.  Returns the parsed JSON response."
          (url-request-data
           (when data
             (encode-coding-string (json-encode data) 'utf-8)))
-         (url (concat shortcut-api-base-url endpoint)))
-    (with-current-buffer (url-retrieve-synchronously url t)
-      (goto-char (point-min))
-      (re-search-forward "^$")
-      (delete-region (point-min) (point))
-      (let ((json-object-type 'alist)
-            (json-array-type 'vector)
-            (json-key-type 'symbol))
-        (json-read)))))
+         (url (concat shortcut-api-base-url endpoint))
+         (buffer (url-retrieve-synchronously url t)))
+    (unwind-protect
+         (with-current-buffer buffer
+           (goto-char (point-min))
+           (re-search-forward "^$")
+           (delete-region (point-min) (point))
+           (let ((json-object-type 'alist)
+                 (json-array-type 'vector)
+                 (json-key-type 'symbol))
+             (json-read)))
+      (when (buffer-live-p buffer)
+        (kill-buffer buffer)))))
 
 ;;; Member Functions
 
