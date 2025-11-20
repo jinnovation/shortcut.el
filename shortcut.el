@@ -1337,6 +1337,18 @@ This command is not yet implemented."
   (interactive)
   (user-error "Epic creation is not yet implemented"))
 
+(defun shortcut-story-list ()
+  "List all stories.
+This command is not yet implemented."
+  (interactive)
+  (user-error "Story listing is not yet implemented"))
+
+(defun shortcut-epic-list ()
+  "List all epics.
+This command is not yet implemented."
+  (interactive)
+  (user-error "Epic listing is not yet implemented"))
+
 (defun shortcut-story-cache-populate (query)
   "Pre-populate the story cache with stories matching QUERY.
 Prompts for a query string and searches for stories using the Shortcut API.
@@ -1349,17 +1361,21 @@ Results are added to the story cache for faster completion."
 (transient-define-prefix shortcut-dispatch ()
   "Dispatch Shortcut commands."
   :transient-non-suffix #'transient--do-call
-  [:description (lambda () (format "Shortcut: %s (%s)"
-                                   (shortcut--workspace-name)
-                                   (shortcut--current-user-name)))
-                ["Visit"
-                 ("v s" "story" shortcut-story-get)
-                 ("v e" "epic" shortcut-epic-get)]
-                ["Create"
-                 ("c s" "story" shortcut-story-create :transient nil :inapt-if (lambda () t))
-                 ("c e" "epic" shortcut-epic-create :transient nil :inapt-if (lambda () t))]
-                ["Experimental"
-                 ("x c" "pre-populate story cache with..." shortcut-story-cache-populate)]])
+  [:description
+   (lambda () (format "Shortcut: %s (%s)"
+                      (shortcut--workspace-name)
+                      (shortcut--current-user-name)))
+   ["Visit"
+    ("v s" "story" shortcut-story-get)
+    ("v e" "epic" shortcut-epic-get)]
+   ["List"
+    ("l s" "stories" shortcut-story-list :transient nil :inapt-if (lambda () t))
+    ("l e" "epics" shortcut-epic-list :transient nil :inapt-if (lambda () t))]
+   ["Create"
+    ("c s" "story" shortcut-story-create :transient nil :inapt-if (lambda () t))
+    ("c e" "epic" shortcut-epic-create :transient nil :inapt-if (lambda () t))]
+   ["Experimental"
+    ("x c" "pre-populate story cache with..." shortcut-story-cache-populate)]])
 
 (provide 'shortcut)
 
