@@ -1337,6 +1337,15 @@ This command is not yet implemented."
   (interactive)
   (user-error "Epic creation is not yet implemented"))
 
+(defun shortcut-story-cache-populate (query)
+  "Pre-populate the story cache with stories matching QUERY.
+Prompts for a query string and searches for stories using the Shortcut API.
+Results are added to the story cache for faster completion."
+  (interactive "sSearch query: ")
+  (message "Searching for stories...")
+  (let ((results (shortcut--stories-search query)))
+    (message "Added %d stories to cache" (length results))))
+
 (transient-define-prefix shortcut-dispatch ()
   "Dispatch Shortcut commands."
   :transient-non-suffix #'transient--do-call
@@ -1348,7 +1357,9 @@ This command is not yet implemented."
                  ("v e" "epic" shortcut-epic-get)]
                 ["Create"
                  ("c s" "story" shortcut-story-create :transient nil :inapt-if (lambda () t))
-                 ("c e" "epic" shortcut-epic-create :transient nil :inapt-if (lambda () t))]])
+                 ("c e" "epic" shortcut-epic-create :transient nil :inapt-if (lambda () t))]
+                ["Experimental"
+                 ("x c" "pre-populate story cache with..." shortcut-story-cache-populate)]])
 
 (provide 'shortcut)
 
