@@ -75,6 +75,10 @@ Keys are workflow IDs (as strings), values are workflow objects.")
   "Cache for story information.
 Keys are story IDs (as strings), values are alists with at least 'name field.")
 
+(defvar shortcut--epic-cache (make-hash-table :test 'equal)
+  "Cache for epic information.
+Keys are epic IDs (as strings), values are epic objects.")
+
 (defun shortcut--clear-story-cache ()
   (interactive)
   (setq shortcut--story-cache (make-hash-table :test 'equal)))
@@ -165,14 +169,18 @@ METHOD defaults to GET.  Returns the parsed JSON response."
 ;;; Member Functions
 
 (defun shortcut--story-cache-add (story)
-  "Add STORY to the cache, storing its ID and name.
+  "Add STORY to the cache, storing its ID, name, epic, and author.
 STORY should be an alist with at least 'id and 'name fields."
   (when-let ((id (alist-get 'id story))
              (name (alist-get 'name story)))
-    (puthash (format "%s" id)
-             `((id . ,id)
-               (name . ,name))
-             shortcut--story-cache)))
+    (let ((epic-id (alist-get 'epic_id story))
+          (owner-ids (alist-get 'owner_ids story)))
+      (puthash (format "%s" id)
+               `((id . ,id)
+                 (name . ,name)
+                 (epic_id . ,epic-id)
+                 (owner_ids . ,owner-ids))
+               shortcut--story-cache))))
 
 (defun shortcut--story-cache-candidates ()
   "Get a list of story candidates from cache for completing-read.
@@ -265,9 +273,14 @@ and ACTION is the completion action (t, lambda, metadata, etc.)."
   ;; TODO: How to set substring search style for this specifically?
   (pcase action
     ('metadata
-     ;; Return completion metadata including affixation function
+     ;; Return completion metadata with affixation function for prefix and annotation function for suffix
      '(metadata (category . shortcut-story)
-       (affixation-function . shortcut--story-affixation-function)))
+       ;; NB(@jinnovation): Affixation function only adds `sc-` prefix. Not very useful. Consider removing.'
+       ;; (affixation-function . shortcut--story-affixation-function)
+
+       ;; FIXME: affixation takes precedent over annotation-function. How can we include the
+       ;; annotation info but not allow completing on it?
+       (annotation-function . shortcut--story-annotation-function)))
     ('lambda
         ;; Test if STRING is a valid completion
         (let ((candidates (shortcut--story-cache-candidates)))
@@ -367,6 +380,25 @@ Returns a vector of state objects, each with 'id and 'name fields."
   (let* ((workflow (shortcut--workflow-get workflow-id))
          (states (alist-get 'states workflow)))
     (or states [])))
+
+(defun shortcut--epic-get (epic-id)
+  "Get the JSON payload for epic with EPIC-ID.
+Returns the epic as an alist parsed from JSON.
+Results are cached in `shortcut--epic-cache'."
+  (let ((epic-id-str (format "%s" epic-id)))
+    (or (gethash epic-id-str shortcut--epic-cache)
+        (let ((epic (shortcut--api-request (format "/epics/%s" epic-id-str))))
+          (puthash epic-id-str epic shortcut--epic-cache)
+          epic))))
+
+(defun shortcut--epic-name (epic-id)
+  "Get the name of the epic with EPIC-ID.
+Returns the epic name as a string, or nil if lookup fails or epic-id is nil."
+  (when epic-id
+    (condition-case err
+        (let ((epic (shortcut--epic-get epic-id)))
+          (alist-get 'name epic))
+      (error nil))))
 
 ;;; Story Mode
 
@@ -778,9 +810,39 @@ Builds a threaded view based on parent_id relationships."
 CANDIDATES is a list of display keys from the alist (strings in format 'ID TITLE').
 Returns a list of (candidate prefix suffix) for each candidate, adding 'sc-' prefix."
   (mapcar (lambda (candidate)
-            (let ((prefix (propertize "sc-" 'face 'shortcut-id)))
-              (list candidate prefix "")))
+            (list candidate
+                  (propertize "sc-" 'face 'shortcut-id)
+                  ""))
           candidates))
+
+(defun shortcut--story-annotation-function (candidate)
+  "Annotation function for story completion.
+CANDIDATE is a display key string in format 'ID TITLE'.
+Returns an annotation string with epic name and author."
+  (let* (;; Extract the story ID from the candidate string using regex
+         ;; Candidate format is "ID TITLE" where ID is a sequence of digits
+         (id (when (string-match "^\\([0-9]+\\)" candidate)
+               (match-string 1 candidate)))
+         ;; Get story from cache
+         (story (when id (gethash id shortcut--story-cache)))
+         (epic-id (alist-get 'epic_id story))
+         (owner-ids (alist-get 'owner_ids story))
+         ;; Build annotation parts
+         (epic-str (when epic-id
+                     (let ((epic-name (shortcut--epic-name epic-id)))
+                       (when epic-name
+                         (format " [%s]" epic-name)))))
+         (owner-str (when (and owner-ids (> (length owner-ids) 0))
+                      (let ((first-owner (aref owner-ids 0)))
+                        (format " @%s" (shortcut--member-name first-owner)))))
+         ;; Combine annotations
+         (annotation (concat
+                      (propertize " " 'display '(space :align-to center))
+                      (when epic-str
+                        (propertize epic-str 'face 'font-lock-comment-face))
+                      (when owner-str
+                        (propertize owner-str 'face 'font-lock-keyword-face)))))
+    annotation))
 
 (defun shortcut-story-get (story-id)
   "Interactively get and display a Shortcut story by STORY-ID.
