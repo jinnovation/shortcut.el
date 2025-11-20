@@ -1325,6 +1325,18 @@ Returns the user name as a string, or \"Unknown\" if lookup fails."
 
 ;;; Transient Interface
 
+(defun shortcut-story-create ()
+  "Create a new Shortcut story.
+This command is not yet implemented."
+  (interactive)
+  (user-error "Story creation is not yet implemented"))
+
+(defun shortcut-epic-create ()
+  "Create a new Shortcut epic.
+This command is not yet implemented."
+  (interactive)
+  (user-error "Epic creation is not yet implemented"))
+
 (transient-define-prefix shortcut-dispatch ()
   "Dispatch Shortcut commands."
   :transient-non-suffix #'transient--do-call
@@ -1333,7 +1345,10 @@ Returns the user name as a string, or \"Unknown\" if lookup fails."
                                    (shortcut--current-user-name)))
                 ["Visit"
                  ("v s" "story" shortcut-story-get)
-                 ("v e" "epic" shortcut-epic-get)]])
+                 ("v e" "epic" shortcut-epic-get)]
+                ["Create"
+                 ("c s" "story" shortcut-story-create :transient nil :inapt-if (lambda () t))
+                 ("c e" "epic" shortcut-epic-create :transient nil :inapt-if (lambda () t))]])
 
 (provide 'shortcut)
 
