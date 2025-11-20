@@ -197,7 +197,8 @@ and values are the story IDs (as strings without 'sc-' prefix)."
 
 (defun shortcut--stories-search (input)
   "Search for stories using the Shortcut Search API with INPUT string.
-Returns a list of story IDs as strings.
+Returns an alist where keys are 'ID TITLE' display strings (with propertized ID)
+and values are story IDs (as strings without 'sc-' prefix).
 Caches retrieved stories in `shortcut--story-cache'."
   (condition-case err
       (let* ((query (if (string-empty-p input)
@@ -208,17 +209,23 @@ Caches retrieved stories in `shortcut--story-cache'."
                      (page_size . 50)))
              (response (shortcut--api-request "/search" "GET" body))
              (stories (alist-get 'data (alist-get 'stories response)))
-             (story-ids '()))
-        ;; Cache each story and collect IDs
+             (candidates '()))
+        ;; Cache each story and collect candidates in cache format
         (when stories
           (seq-doseq (story stories)
             (shortcut--story-cache-add story)
-            (when-let ((id (alist-get 'id story)))
-              (push (format "%s" id) story-ids))))
+            (when-let* ((id (alist-get 'id story))
+                        (name (alist-get 'name story))
+                        (id-str (format "%s" id)))
+              (let ((display-key (format "%s %s"
+                                         (propertize id-str 'face 'shortcut-id)
+                                         name)))
+                (push (cons display-key id-str) candidates)))))
         ;; Return in descending order (most recent first)
-        (sort story-ids
+        (sort candidates
               (lambda (a b)
-                (> (string-to-number a) (string-to-number b)))))
+                (> (string-to-number (cdr a))
+                   (string-to-number (cdr b))))))
     (error
      ;; On error, return empty list and optionally log
      (message "Shortcut search API error: %s" (error-message-string err))
