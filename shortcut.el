@@ -280,8 +280,8 @@ and ACTION is the completion action (t, lambda, metadata, etc.)."
 
        ;; FIXME: affixation takes precedent over annotation-function. How can we include the
        ;; annotation info but not allow completing on it?
-       (annotation-function . shortcut--story-annotation-function)))
-    ;; TODO: Group by epic
+       (annotation-function . shortcut--story-annotation-function)
+       (group-function . shortcut--story-group-function)))
     ('lambda
         ;; Test if STRING is a valid completion
         (let ((candidates (shortcut--story-cache-candidates)))
@@ -844,6 +844,28 @@ Returns an annotation string with epic name and author."
                       (when owner-str
                         (propertize owner-str 'face 'font-lock-keyword-face)))))
     annotation))
+
+(defun shortcut--story-group-function (candidate transform)
+  "Group function for story completion.
+CANDIDATE is a display key string in format 'ID TITLE'.
+TRANSFORM is either nil (return group title) or non-nil (return transformed candidate).
+Groups stories by their epic name, with stories without epics in 'No Epic' group."
+  (if transform
+      ;; When TRANSFORM is non-nil, return the candidate as-is
+      candidate
+    ;; When TRANSFORM is nil, return the group title for this candidate
+    (let* (;; Extract the story ID from the candidate string using regex
+           (id (when (string-match "^\\([0-9]+\\)" candidate)
+                 (match-string 1 candidate)))
+           ;; Get story from cache
+           (story (when id (gethash id shortcut--story-cache)))
+           (epic-id (alist-get 'epic_id story))
+           ;; Get epic name, or use "No Epic" as default
+           (group-name (if epic-id
+                           (or (shortcut--epic-name epic-id)
+                               (format "Epic sc-%s" epic-id))
+                         "No Epic")))
+      group-name)))
 
 (defun shortcut-story-get (story-id)
   "Interactively get and display a Shortcut story by STORY-ID.
