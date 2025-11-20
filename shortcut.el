@@ -236,25 +236,24 @@ Caches retrieved stories in `shortcut--story-cache'."
 Checks minimum character length."
   (>= (length input) shortcut-story-search-min-chars))
 
-(defun shortcut--story-merge-candidates (cache-candidates search-ids)
-  "Merge CACHE-CANDIDATES with SEARCH-IDS, removing duplicates.
-CACHE-CANDIDATES is an alist of (display-string . id).
-SEARCH-IDS is a list of story ID strings from API search.
+(defun shortcut--story-merge-candidates (cache-candidates search-candidates)
+  "Merge CACHE-CANDIDATES with SEARCH-CANDIDATES, removing duplicates.
+Both CACHE-CANDIDATES and SEARCH-CANDIDATES are alists of (display-string . id).
 Returns a merged alist sorted by ID (most recent first)."
-  (let* ((cache-ids (mapcar #'cdr cache-candidates))
-         (all-ids (delete-dups (append search-ids cache-ids)))
+  (let* ((all-candidates (append search-candidates cache-candidates))
+         ;; Remove duplicates by ID, keeping first occurrence (from search results)
+         (seen-ids (make-hash-table :test 'equal))
          (merged '()))
-    ;; Build merged list with display strings
-    (dolist (id all-ids)
-      (let* ((cached-entry (gethash id shortcut--story-cache))
-             (name (alist-get 'name cached-entry))
-             (display-key (if name
-                              (format "%s %s"
-                                      (propertize id 'face 'shortcut-id)
-                                      name)
-                            id)))
-        (push (cons display-key id) merged)))
-    merged))
+    (dolist (candidate all-candidates)
+      (let ((id (cdr candidate)))
+        (unless (gethash id seen-ids)
+          (puthash id t seen-ids)
+          (push candidate merged))))
+    ;; Return in descending order by ID
+    (sort merged
+          (lambda (a b)
+            (> (string-to-number (cdr a))
+               (string-to-number (cdr b)))))))
 
 ;; NB(@jinnovation): How can we get the substring to properly be sent in unconditionally when using
 ;; something like vertico-prescient-mode, which seems to send empty string on some cases?
@@ -280,8 +279,8 @@ and ACTION is the completion action (t, lambda, metadata, etc.)."
              (if (shortcut--story-should-search-p string)
                  (progn
                    ;; Perform search and merge with cache
-                   (let ((search-ids (shortcut--stories-search string)))
-                     (shortcut--story-merge-candidates cache-candidates search-ids)))
+                   (let ((search-candidates (shortcut--stories-search string)))
+                     (shortcut--story-merge-candidates cache-candidates search-candidates)))
                ;; Just use cache if search not triggered
                cache-candidates)))
        (all-completions string candidates predicate)))
