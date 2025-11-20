@@ -1326,14 +1326,14 @@ Returns the user name as a string, or \"Unknown\" if lookup fails."
 ;;; Transient Interface
 
 (transient-define-prefix shortcut-dispatch ()
-  "Work with Shortcut."
+  "Dispatch Shortcut commands."
+  :transient-non-suffix #'transient--do-call
   [:description (lambda () (format "Shortcut: %s (%s)"
                                    (shortcut--workspace-name)
                                    (shortcut--current-user-name)))
-                ["Stories"
-                 ("s" "Get story" shortcut-story-get)]
-                ["Epics"
-                 ("e" "Get epic" shortcut-epic-get)]])
+                ["Visit"
+                 ("v s" "story" shortcut-story-get)
+                 ("v e" "epic" shortcut-epic-get)]])
 
 (provide 'shortcut)
 
