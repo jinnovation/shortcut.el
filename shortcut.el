@@ -274,7 +274,6 @@ and ACTION is the completion action (t, lambda, metadata, etc.)."
           (test-completion string candidates predicate)))
     ('t
      ;; Return all completions matching STRING
-     (message "completion string: %s (nil = %s)" string (null string))
      (let* ((cache-candidates (shortcut--story-cache-candidates))
             (candidates
              (if (shortcut--story-should-search-p string)
