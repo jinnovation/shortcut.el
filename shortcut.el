@@ -169,32 +169,43 @@ METHOD defaults to GET.  Returns the parsed JSON response."
 ;;; Member Functions
 
 (defun shortcut--story-cache-add (story)
-  "Add STORY to the cache, storing its ID, name, epic, and author.
+  "Add STORY to the cache, storing its ID, name, epic, author, and completion status.
 STORY should be an alist with at least 'id and 'name fields."
   (when-let ((id (alist-get 'id story))
              (name (alist-get 'name story)))
     (let ((epic-id (alist-get 'epic_id story))
-          (owner-ids (alist-get 'owner_ids story)))
+          (owner-ids (alist-get 'owner_ids story))
+          (workflow-state-id (alist-get 'workflow_state_id story))
+          (completed (alist-get 'completed story)))
       (puthash (format "%s" id)
                `((id . ,id)
                  (name . ,name)
                  (epic_id . ,epic-id)
-                 (owner_ids . ,owner-ids))
+                 (owner_ids . ,owner-ids)
+                 (workflow_state_id . ,workflow-state-id)
+                 (completed . ,completed))
                shortcut--story-cache))))
 
 (defun shortcut--story-cache-candidates ()
   "Get a list of story candidates from cache for completing-read.
 Returns an alist where keys are 'ID TITLE' strings for matching,
-and values are the story IDs (as strings without 'sc-' prefix)."
+and values are the story IDs (as strings without 'sc-' prefix).
+Completed stories are displayed with strikethrough and grey color."
   (let ((candidates '()))
     (maphash (lambda (key value)
                (let* ((id key)
                       (name (alist-get 'name value))
+                      (completed (alist-get 'completed value))
+                      ;; Apply strikethrough and grey to completed stories
+                      (display-name (if (and name (not (eq completed :json-false)))
+                                        (propertize name
+                                                    'face '(:strike-through t :foreground "grey"))
+                                      name))
                       ;; Create a key with ID and title for filtering
                       (display-key (if name
                                        (format "%s %s"
                                                (propertize id 'face 'shortcut-id)
-                                               name)
+                                               display-name)
                                      id)))
                  (push (cons display-key id) candidates)))
              shortcut--story-cache)
@@ -225,9 +236,15 @@ Caches retrieved stories in `shortcut--story-cache'."
             (when-let* ((id (alist-get 'id story))
                         (name (alist-get 'name story))
                         (id-str (format "%s" id)))
-              (let ((display-key (format "%s %s"
-                                         (propertize id-str 'face 'shortcut-id)
-                                         name)))
+              (let* ((completed (alist-get 'completed story))
+                     ;; Apply strikethrough and grey to completed stories
+                     (display-name (if (not (eq completed :json-false))
+                                       (propertize name
+                                                   'face '(:strike-through t :foreground "grey"))
+                                     name))
+                     (display-key (format "%s %s"
+                                          (propertize id-str 'face 'shortcut-id)
+                                          display-name)))
                 (push (cons display-key id-str) candidates)))))
         ;; Return in descending order (most recent first)
         (sort candidates
@@ -248,7 +265,8 @@ Checks minimum character length."
   "Merge CACHE-CANDIDATES with SEARCH-IDS, removing duplicates.
 CACHE-CANDIDATES is an alist of (display-string . id).
 SEARCH-IDS is a list of story ID strings from API search.
-Returns a merged alist sorted by ID (most recent first)."
+Returns a merged alist sorted by ID (most recent first).
+Completed stories are displayed with strikethrough and grey color."
   (let* ((cache-ids (mapcar #'cdr cache-candidates))
          (all-ids (delete-dups (append search-ids cache-ids)))
          (merged '()))
@@ -256,10 +274,16 @@ Returns a merged alist sorted by ID (most recent first)."
     (dolist (id all-ids)
       (let* ((cached-entry (gethash id shortcut--story-cache))
              (name (alist-get 'name cached-entry))
+             (completed (alist-get 'completed cached-entry))
+             ;; Apply strikethrough and grey to completed stories
+             (display-name (if (and name (not (eq completed :json-false)))
+                               (propertize name
+                                           'face '(:strike-through t :foreground "grey"))
+                             name))
              (display-key (if name
                               (format "%s %s"
                                       (propertize id 'face 'shortcut-id)
-                                      name)
+                                      display-name)
                             id)))
         (push (cons display-key id) merged)))
     merged))
