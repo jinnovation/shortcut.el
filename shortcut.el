@@ -249,10 +249,13 @@ Returns a merged alist sorted by ID (most recent first)."
         (push (cons display-key id) merged)))
     merged))
 
+;; NB(@jinnovation): How can we get the substring to properly be sent in unconditionally when using
+;; something like vertico-prescient-mode, which seems to send empty string on some cases?
 (defun shortcut--story-completion-table (string predicate action)
   "Completion table function for story selection with dynamic search.
 STRING is the current input, PREDICATE is the completion predicate,
 and ACTION is the completion action (t, lambda, metadata, etc.)."
+  ;; TODO: How to set substring search style for this specifically?
   (pcase action
     ('metadata
      ;; Return completion metadata including affixation function
@@ -264,11 +267,11 @@ and ACTION is the completion action (t, lambda, metadata, etc.)."
           (test-completion string candidates predicate)))
     ('t
      ;; Return all completions matching STRING
+     (message "completion string: %s (nil = %s)" string (null string))
      (let* ((cache-candidates (shortcut--story-cache-candidates))
             (candidates
              (if (shortcut--story-should-search-p string)
                  (progn
-                   (message "searching...")
                    ;; Perform search and merge with cache
                    (let ((search-ids (shortcut--stories-search string)))
                      (shortcut--story-merge-candidates cache-candidates search-ids)))
