@@ -53,6 +53,13 @@ You can generate a token at https://app.shortcut.com/settings/account/api-tokens
   :type 'string
   :group 'shortcut)
 
+(defcustom shortcut-story-search-min-chars 2
+  "Minimum number of characters before triggering dynamic search.
+API searches will only be triggered when the user has typed at least
+this many characters.  This helps avoid excessive API calls."
+  :type 'integer
+  :group 'shortcut)
+
 ;;; Cache Variables
 
 (defvar shortcut--member-cache (make-hash-table :test 'equal)
@@ -212,6 +219,62 @@ Caches retrieved stories in `shortcut--story-cache'."
      ;; On error, return empty list and optionally log
      (message "Shortcut search API error: %s" (error-message-string err))
      '())))
+
+(defun shortcut--story-should-search-p (input)
+  "Return non-nil if we should trigger an API search for INPUT.
+Checks minimum character length."
+  (>= (length input) shortcut-story-search-min-chars))
+
+(defun shortcut--story-merge-candidates (cache-candidates search-ids)
+  "Merge CACHE-CANDIDATES with SEARCH-IDS, removing duplicates.
+CACHE-CANDIDATES is an alist of (display-string . id).
+SEARCH-IDS is a list of story ID strings from API search.
+Returns a merged alist sorted by ID (most recent first)."
+  (let* ((cache-ids (mapcar #'cdr cache-candidates))
+         (all-ids (delete-dups (append search-ids cache-ids)))
+         (merged '()))
+    ;; Build merged list with display strings
+    (dolist (id all-ids)
+      (let* ((cached-entry (gethash id shortcut--story-cache))
+             (name (alist-get 'name cached-entry))
+             (display-key (if name
+                              (format "%s %s"
+                                      (propertize id 'face 'shortcut-id)
+                                      name)
+                            id)))
+        (push (cons display-key id) merged)))
+    merged))
+
+(defun shortcut--story-completion-table (string predicate action)
+  "Completion table function for story selection with dynamic search.
+STRING is the current input, PREDICATE is the completion predicate,
+and ACTION is the completion action (t, lambda, metadata, etc.)."
+  (pcase action
+    ('metadata
+     ;; Return completion metadata including affixation function
+     '(metadata (category . shortcut-story)
+       (affixation-function . shortcut--story-affixation-function)))
+    ('lambda
+        ;; Test if STRING is a valid completion
+        (let ((candidates (shortcut--story-cache-candidates)))
+          (test-completion string candidates predicate)))
+    ('t
+     ;; Return all completions matching STRING
+     (let* ((cache-candidates (shortcut--story-cache-candidates))
+            (candidates
+             (if (shortcut--story-should-search-p string)
+                 (progn
+                   (message "searching...")
+                   ;; Perform search and merge with cache
+                   (let ((search-ids (shortcut--stories-search string)))
+                     (shortcut--story-merge-candidates cache-candidates search-ids)))
+               ;; Just use cache if search not triggered
+               cache-candidates)))
+       (all-completions string candidates predicate)))
+    (_
+     ;; Default: try-completion
+     (let ((cache-candidates (shortcut--story-cache-candidates)))
+       (try-completion string cache-candidates predicate)))))
 
 (defun shortcut--story-get (story-id)
   "Get the JSON payload for a story with STORY-ID.
@@ -708,14 +771,14 @@ Returns a list of (candidate prefix suffix) for each candidate, adding 'sc-' pre
 
 (defun shortcut-story-get (story-id)
   "Interactively get and display a Shortcut story by STORY-ID.
-When called interactively, prompts for the story ID using completing-read
-with cached story names as annotations."
+When called interactively, prompts for the story ID using completing-read.
+Supports dynamic searching - type to search for stories via the API,
+or select from cached stories."
   (interactive
-   (let* ((candidates (shortcut--story-cache-candidates))
-          (completion-extra-properties
-           '(:affixation-function shortcut--story-affixation-function))
-          ;; completing-read returns the alist value (the ID string) when given an alist
-          (id-str (completing-read "Story ID: " candidates nil nil))
+   (let* (;; Use completion table function for dynamic search
+          (id-str (completing-read "Story ID: "
+                                   #'shortcut--story-completion-table
+                                   nil nil))
           (id (if (string-match "^sc-\\([0-9]+\\)$" id-str)
                   (string-to-number (match-string 1 id-str))
                 (string-to-number id-str))))
