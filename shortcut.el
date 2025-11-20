@@ -75,6 +75,10 @@ Keys are workflow IDs (as strings), values are workflow objects.")
   "Cache for story information.
 Keys are story IDs (as strings), values are alists with at least 'name field.")
 
+(defun shortcut--clear-story-cache ()
+  (interactive)
+  (setq shortcut--story-cache (make-hash-table :test 'equal)))
+
 ;;; Faces
 
 (defface shortcut-story-title
