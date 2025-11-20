@@ -1399,7 +1399,8 @@ Results are added to the story cache for faster completion."
     ("c s" "story" shortcut-story-create :transient nil :inapt-if (lambda () t))
     ("c e" "epic" shortcut-epic-create :transient nil :inapt-if (lambda () t))]
    ["Experimental"
-    ("x c" "pre-populate story cache with..." shortcut-story-cache-populate)]])
+    ("x c" "pre-populate story cache with..." shortcut-story-cache-populate)
+    ("x C" "clear story cache" shortcut--clear-story-cache)]])
 
 (provide 'shortcut)
 
