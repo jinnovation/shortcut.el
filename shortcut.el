@@ -389,8 +389,42 @@ Results are cached in `shortcut--epic-cache'."
   (let ((epic-id-str (format "%s" epic-id)))
     (or (gethash epic-id-str shortcut--epic-cache)
         (let ((epic (shortcut--api-request (format "/epics/%s" epic-id-str))))
-          (puthash epic-id-str epic shortcut--epic-cache)
+          (shortcut--epic-cache-add epic)
           epic))))
+
+(defun shortcut--epic-cache-add (epic)
+  "Add EPIC to the cache, storing its ID, name, and state.
+EPIC should be an alist with at least 'id and 'name fields."
+  (when-let ((id (alist-get 'id epic))
+             (name (alist-get 'name epic)))
+    (let ((state (alist-get 'state epic))
+          (owner-ids (alist-get 'owner_ids epic)))
+      (puthash (format "%s" id)
+               `((id . ,id)
+                 (name . ,name)
+                 (state . ,state)
+                 (owner_ids . ,owner-ids))
+               shortcut--epic-cache))))
+
+(defun shortcut--epic-cache-candidates ()
+  "Get a list of epic candidates from cache for completing-read.
+Returns an alist where keys are 'ID NAME' strings for matching,
+and values are the epic IDs (as strings without 'sc-' prefix)."
+  (let ((candidates '()))
+    (maphash (lambda (key value)
+               (let* ((id key)
+                      (name (alist-get 'name value))
+                      (display-key (if name
+                                       (format "%s %s"
+                                               (propertize id 'face 'shortcut-id)
+                                               name)
+                                     id)))
+                 (push (cons display-key id) candidates)))
+             shortcut--epic-cache)
+    (sort candidates
+          (lambda (a b)
+            (> (string-to-number (cdr a))
+               (string-to-number (cdr b)))))))
 
 (defun shortcut--epic-name (epic-id)
   "Get the name of the epic with EPIC-ID.
@@ -400,6 +434,142 @@ Returns the epic name as a string, or nil if lookup fails or epic-id is nil."
         (let ((epic (shortcut--epic-get epic-id)))
           (alist-get 'name epic))
       (error nil))))
+
+(defun shortcut--epics-search (input)
+  "Search for epics using the Shortcut Search API with INPUT string.
+Returns an alist where keys are 'ID NAME' display strings (with propertized ID)
+and values are epic IDs (as strings without 'sc-' prefix).
+Caches retrieved epics in `shortcut--epic-cache'."
+  (condition-case err
+      (let* ((query (if (string-empty-p input)
+                        "is:epic"
+                      (format "is:epic %s" input)))
+             (body `((query . ,query)
+                     (entity_types . ["epic"])
+                     (page_size . 50)))
+             (response (shortcut--api-request "/search" "GET" body))
+             (epics (alist-get 'data (alist-get 'epics response)))
+             (candidates '()))
+        ;; Cache each epic and collect candidates
+        (when epics
+          (seq-doseq (epic epics)
+            (shortcut--epic-cache-add epic)
+            (when-let* ((id (alist-get 'id epic))
+                        (name (alist-get 'name epic))
+                        (id-str (format "%s" id)))
+              (let ((display-key (format "%s %s"
+                                         (propertize id-str 'face 'shortcut-id)
+                                         name)))
+                (push (cons display-key id-str) candidates)))))
+        ;; Return in descending order (most recent first)
+        (sort candidates
+              (lambda (a b)
+                (> (string-to-number (cdr a))
+                   (string-to-number (cdr b))))))
+    (error
+     ;; On error, return empty list and log
+     (message "Shortcut search API error: %s" (error-message-string err))
+     '())))
+
+(defun shortcut--epic-should-search-p (input)
+  "Return non-nil if we should trigger an API search for INPUT.
+Checks minimum character length."
+  (>= (length input) shortcut-story-search-min-chars))
+
+(defun shortcut--epic-merge-candidates (cache-candidates search-ids)
+  "Merge CACHE-CANDIDATES with SEARCH-IDS, removing duplicates.
+CACHE-CANDIDATES is an alist of (display-string . id).
+SEARCH-IDS is a list of epic ID strings from API search.
+Returns a merged alist sorted by ID (most recent first)."
+  (let* ((cache-ids (mapcar #'cdr cache-candidates))
+         (all-ids (delete-dups (append search-ids cache-ids)))
+         (merged '()))
+    ;; Build merged list with display strings
+    (dolist (id all-ids)
+      (let* ((cached-entry (gethash id shortcut--epic-cache))
+             (name (alist-get 'name cached-entry))
+             (display-key (if name
+                              (format "%s %s"
+                                      (propertize id 'face 'shortcut-id)
+                                      name)
+                            id)))
+        (push (cons display-key id) merged)))
+    merged))
+
+(defun shortcut--epic-completion-table (string predicate action)
+  "Completion table function for epic selection with dynamic search.
+STRING is the current input, PREDICATE is the completion predicate,
+and ACTION is the completion action (t, lambda, metadata, etc.)."
+  (pcase action
+    ('metadata
+     '(metadata (category . shortcut-epic)
+       (annotation-function . shortcut--epic-annotation-function)
+       (group-function . shortcut--epic-group-function)))
+    ('lambda
+     ;; Test if STRING is a valid completion
+     (let ((candidates (shortcut--epic-cache-candidates)))
+       (test-completion string candidates predicate)))
+    ('t
+     ;; Return all completions matching STRING
+     (let* ((cache-candidates (shortcut--epic-cache-candidates))
+            (candidates
+             (if (shortcut--epic-should-search-p string)
+                 (progn
+                   ;; Perform search and merge with cache
+                   (let ((search-ids (shortcut--epics-search string)))
+                     (shortcut--epic-merge-candidates cache-candidates search-ids)))
+               ;; Just use cache if search not triggered
+               cache-candidates)))
+       (all-completions string candidates predicate)))
+    (_
+     ;; Default: try-completion
+     (let ((cache-candidates (shortcut--epic-cache-candidates)))
+       (try-completion string cache-candidates predicate)))))
+
+(defun shortcut--epic-annotation-function (candidate)
+  "Annotation function for epic completion.
+CANDIDATE is a display key string in format 'ID NAME'.
+Returns an annotation string with state and owner."
+  (let* (;; Extract the epic ID from the candidate string
+         (id (when (string-match "^\\([0-9]+\\)" candidate)
+               (match-string 1 candidate)))
+         ;; Get epic from cache
+         (epic (when id (gethash id shortcut--epic-cache)))
+         (state (alist-get 'state epic))
+         (owner-ids (alist-get 'owner_ids epic))
+         ;; Build annotation parts
+         (state-str (when state
+                      (format " [%s]" state)))
+         (owner-str (when (and owner-ids (> (length owner-ids) 0))
+                      (let ((first-owner (aref owner-ids 0)))
+                        (format " @%s" (shortcut--member-name first-owner)))))
+         ;; Combine annotations
+         (annotation (concat
+                      (propertize " " 'display '(space :align-to center))
+                      (when state-str
+                        (propertize state-str 'face 'font-lock-comment-face))
+                      (when owner-str
+                        (propertize owner-str 'face 'font-lock-keyword-face)))))
+    annotation))
+
+(defun shortcut--epic-group-function (candidate transform)
+  "Group function for epic completion.
+CANDIDATE is a display key string in format 'ID NAME'.
+TRANSFORM is either nil (return group title) or non-nil (return transformed candidate).
+Groups epics by their state."
+  (if transform
+      ;; When TRANSFORM is non-nil, return the candidate as-is
+      candidate
+    ;; When TRANSFORM is nil, return the group title for this candidate
+    (let* (;; Extract the epic ID from the candidate string
+           (id (when (string-match "^\\([0-9]+\\)" candidate)
+                 (match-string 1 candidate)))
+           ;; Get epic from cache
+           (epic (when id (gethash id shortcut--epic-cache)))
+           (state (alist-get 'state epic))
+           ;; Get state name, or use "Unknown" as default
+           (group-name (or state "Unknown")))
+      group-name)))
 
 ;;; Story Mode
 
@@ -1101,9 +1271,14 @@ Returns the state as a string, or \"Unknown\" if not found."
 
 (defun shortcut-epic-get (epic-id)
   "Interactively get and display a Shortcut epic by EPIC-ID.
-When called interactively, prompts for the epic ID."
+When called interactively, prompts for the epic ID using completing-read.
+Supports dynamic searching - type to search for epics via the API,
+or select from cached epics."
   (interactive
-   (let* ((id-str (read-string "Epic ID: "))
+   (let* (;; Use completion table function for dynamic search
+          (id-str (completing-read "Epic ID: "
+                                   #'shortcut--epic-completion-table
+                                   nil nil))
           (id (if (string-match "^sc-\\([0-9]+\\)$" id-str)
                   (string-to-number (match-string 1 id-str))
                 (string-to-number id-str))))
