@@ -891,6 +891,233 @@ or select from cached stories."
         (goto-char (point-min))
         (display-buffer (current-buffer))))))
 
+;;; Epic Mode
+
+(defun shortcut-epic-ret ()
+  "Handle RET in epic buffer.
+If on a widget, activate it.  Otherwise, browse the epic URL."
+  (interactive)
+  (if (get-char-property (point) 'button)
+      (widget-button-press (point))
+    (shortcut-epic-browse-url)))
+
+(defvar shortcut-epic-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "q") 'quit-window)
+    (define-key map (kbd "g") 'shortcut-epic-refresh)
+    (define-key map (kbd "b") 'shortcut-epic-browse-url)
+    (define-key map (kbd "RET") 'shortcut-epic-ret)
+    (define-key map (kbd "M-w") 'shortcut-epic-copy-id)
+    map)
+  "Keymap for `shortcut-epic-mode'.")
+
+(defvar-local shortcut-epic--current-id nil
+  "The ID of the epic currently displayed in this buffer.")
+
+(defvar-local shortcut-epic--current-state-id nil
+  "The current state ID of the epic displayed in this buffer.")
+
+(define-derived-mode shortcut-epic-mode magit-section-mode "Shortcut-Epic"
+                     "Major mode for viewing Shortcut epics.
+
+\\{shortcut-epic-mode-map}"
+                     :group 'shortcut
+                     (setq truncate-lines t)
+                     (goto-address-mode +1))
+
+(defun shortcut-epic-refresh ()
+  "Refresh the current epic buffer."
+  (interactive)
+  (when shortcut-epic--current-id
+    (let ((inhibit-read-only t)
+          (epic (shortcut--epic-get shortcut-epic--current-id))
+          (pos (point)))
+      (erase-buffer)
+      (shortcut--epic-format-buffer epic)
+      (goto-char (min pos (point-max))))))
+
+(defun shortcut-epic-browse-url ()
+  "Open the current epic in a web browser."
+  (interactive)
+  (when shortcut-epic--current-id
+    (let* ((epic (shortcut--epic-get shortcut-epic--current-id))
+           (url (alist-get 'app_url epic)))
+      (if url
+          (browse-url url)
+        (message "No URL available for this epic")))))
+
+(defun shortcut-epic-copy-id ()
+  "Copy the current epic ID to the kill ring."
+  (interactive)
+  (if shortcut-epic--current-id
+      (let ((id-string (format "sc-%d" shortcut-epic--current-id)))
+        (kill-new id-string)
+        (message "Copied %s to kill ring" id-string))
+    (message "No epic ID available")))
+
+;;; Epic Buffer Formatting
+
+(defun shortcut--epic-state-name (epic)
+  "Get the state name from EPIC.
+Returns the state as a string, or \"Unknown\" if not found."
+  (or (alist-get 'state epic) "Unknown"))
+
+(defun shortcut--epic-insert-stats (stats)
+  "Insert STATS section showing story and point counts."
+  (when stats
+    (magit-insert-section (stats)
+      (magit-insert-heading "Stats")
+
+      (let ((num-stories-total (alist-get 'num_stories_total stats))
+            (num-stories-unstarted (alist-get 'num_stories_unstarted stats))
+            (num-stories-started (alist-get 'num_stories_started stats))
+            (num-stories-done (alist-get 'num_stories_done stats))
+            (num-points-total (alist-get 'num_points_total stats))
+            (num-points-unstarted (alist-get 'num_points_unstarted stats))
+            (num-points-started (alist-get 'num_points_started stats))
+            (num-points-done (alist-get 'num_points_done stats)))
+
+        (when num-stories-total
+          (shortcut--story-insert-header "Stories"
+                                         (format "%d total" num-stories-total))
+          (when num-stories-unstarted
+            (insert (propertize "                " 'font-lock-face 'shortcut-story-header))
+            (insert (propertize (format "%d unstarted" num-stories-unstarted)
+                                'font-lock-face 'shortcut-story-state-unstarted))
+            (insert "\n"))
+          (when num-stories-started
+            (insert (propertize "                " 'font-lock-face 'shortcut-story-header))
+            (insert (propertize (format "%d started" num-stories-started)
+                                'font-lock-face 'shortcut-story-state-started))
+            (insert "\n"))
+          (when num-stories-done
+            (insert (propertize "                " 'font-lock-face 'shortcut-story-header))
+            (insert (propertize (format "%d done" num-stories-done)
+                                'font-lock-face 'shortcut-story-state-done))
+            (insert "\n")))
+
+        (when num-points-total
+          (shortcut--story-insert-header "Points"
+                                         (format "%d total" num-points-total))
+          (when num-points-unstarted
+            (insert (propertize "                " 'font-lock-face 'shortcut-story-header))
+            (insert (propertize (format "%d unstarted" num-points-unstarted)
+                                'font-lock-face 'shortcut-story-state-unstarted))
+            (insert "\n"))
+          (when num-points-started
+            (insert (propertize "                " 'font-lock-face 'shortcut-story-header))
+            (insert (propertize (format "%d started" num-points-started)
+                                'font-lock-face 'shortcut-story-state-started))
+            (insert "\n"))
+          (when num-points-done
+            (insert (propertize "                " 'font-lock-face 'shortcut-story-header))
+            (insert (propertize (format "%d done" num-points-done)
+                                'font-lock-face 'shortcut-story-state-done))
+            (insert "\n"))))
+
+      (insert "\n"))))
+
+(defun shortcut--epic-format-buffer (epic)
+  "Format EPIC data into a readable buffer similar to story buffers."
+
+  (magit-insert-section (epic epic)
+    (let* ((id (alist-get 'id epic))
+           (name (alist-get 'name epic))
+           (state (shortcut--epic-state-name epic))
+           (labels (alist-get 'labels epic))
+           (owner-ids (alist-get 'owner_ids epic))
+           (milestone-id (alist-get 'milestone_id epic))
+           (objective-ids (alist-get 'objective_ids epic))
+           (project-ids (alist-get 'project_ids epic))
+           (deadline (alist-get 'deadline epic))
+           (planned-start-date (alist-get 'planned_start_date epic))
+           (created-at (alist-get 'created_at epic))
+           (updated-at (alist-get 'updated_at epic))
+           (completed-at (alist-get 'completed_at epic))
+           (description (alist-get 'description epic))
+           (stats (alist-get 'stats epic))
+           (comments (alist-get 'comments epic))
+           (app-url (alist-get 'app_url epic)))
+
+      ;; Set buffer-local variables
+      (setq shortcut-epic--current-state-id (alist-get 'epic_state_id epic))
+
+      ;; Set header line with epic ID and title
+      (setq header-line-format
+            (concat (propertize (format "sc-%d" id) 'face 'shortcut-id)
+                    " "
+                    (propertize name 'face 'shortcut-story-title)))
+
+      (magit-insert-section (overview)
+        (magit-insert-heading "Overview")
+
+        (shortcut--story-insert-header "State" state
+                                       (shortcut--story-format-state state))
+
+        (when owner-ids
+          (shortcut--story-insert-header "Owners"
+                                         (mapconcat #'shortcut--member-name
+                                                    owner-ids ", ")))
+
+        (when milestone-id
+          (shortcut--story-insert-header "Milestone" (format "sc-%d" milestone-id) 'shortcut-id))
+
+        (when (and objective-ids (> (length objective-ids) 0))
+          (shortcut--story-insert-header "Objectives"
+                                         (mapconcat (lambda (id) (format "sc-%d" id))
+                                                    objective-ids ", ")
+                                         'shortcut-id))
+
+        (shortcut--story-insert-labels labels)
+
+        (if deadline
+            (shortcut--story-insert-header "Deadline" (shortcut--story-format-timestamp deadline))
+          (shortcut--story-insert-header "Deadline"
+                                         "(none)"
+                                         'shortcut-placeholder))
+
+        (when planned-start-date
+          (shortcut--story-insert-header "Planned Start" (shortcut--story-format-timestamp planned-start-date)))
+
+        (when (and project-ids (> (length project-ids) 0))
+          (shortcut--story-insert-header "Projects"
+                                         (mapconcat (lambda (id) (format "sc-%d" id))
+                                                    project-ids ", ")
+                                         'shortcut-id))
+
+        (shortcut--story-insert-header "Created" (shortcut--story-format-timestamp created-at))
+        (shortcut--story-insert-header "Updated" (shortcut--story-format-timestamp updated-at))
+        (when completed-at
+          (shortcut--story-insert-header "Completed" (shortcut--story-format-timestamp completed-at)))
+
+        (when app-url
+          (shortcut--story-insert-header "URL" app-url))
+
+        (insert "\n"))
+
+      (shortcut--epic-insert-stats stats)
+      (shortcut--story-insert-description description)
+      (shortcut--story-insert-comments comments))))
+
+(defun shortcut-epic-get (epic-id)
+  "Interactively get and display a Shortcut epic by EPIC-ID.
+When called interactively, prompts for the epic ID."
+  (interactive
+   (let* ((id-str (read-string "Epic ID: "))
+          (id (if (string-match "^sc-\\([0-9]+\\)$" id-str)
+                  (string-to-number (match-string 1 id-str))
+                (string-to-number id-str))))
+     (list id)))
+  (let ((epic (shortcut--epic-get epic-id)))
+    (with-current-buffer (get-buffer-create (format "*Shortcut Epic: sc-%s*" epic-id))
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (shortcut-epic-mode)
+        (setq shortcut-epic--current-id epic-id)
+        (shortcut--epic-format-buffer epic)
+        (goto-char (point-min))
+        (display-buffer (current-buffer))))))
+
 ;;; Member and Workspace Functions
 
 (defvar shortcut--current-member-cache nil
@@ -929,7 +1156,9 @@ Returns the user name as a string, or \"Unknown\" if lookup fails."
                                    (shortcut--workspace-name)
                                    (shortcut--current-user-name)))
                 ["Stories"
-                 ("s" "Get story" shortcut-story-get)]])
+                 ("s" "Get story" shortcut-story-get)]
+                ["Epics"
+                 ("e" "Get epic" shortcut-epic-get)]])
 
 (provide 'shortcut)
 
