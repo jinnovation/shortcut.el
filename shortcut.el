@@ -281,6 +281,7 @@ and ACTION is the completion action (t, lambda, metadata, etc.)."
        ;; FIXME: affixation takes precedent over annotation-function. How can we include the
        ;; annotation info but not allow completing on it?
        (annotation-function . shortcut--story-annotation-function)))
+    ;; TODO: Group by epic
     ('lambda
         ;; Test if STRING is a valid completion
         (let ((candidates (shortcut--story-cache-candidates)))
