@@ -1,6 +1,8 @@
 - Shortcut REST API docs: https://developer.shortcut.com/api/rest/v3
 - OpenAPI API specification: https://developer.shortcut.com/api/rest/v3/shortcut.openapi.json
-- Usage examples for the REST API in other languages can be found here: https://github.com/useshortcut/api-cookbook
+- Usage examples for the REST API in other languages can be found here:
+  https://github.com/useshortcut/api-cookbook
+- When adding new user-facing functionality, add a new corresponding record to CHANGELOG.md
 - When verifying your solutions, confirm that all member dereferences and field names etc. are in
   line with the API specification. Make any modifications before declaring the solution done.
 - Use only Emacs standard libraries, packages, and APIs.
