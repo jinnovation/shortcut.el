@@ -288,6 +288,29 @@ Completed stories are displayed with strikethrough and grey color."
         (push (cons display-key id) merged)))
     merged))
 
+(defun shortcut--story-display-sort-function (candidates)
+  "Sort story CANDIDATES within groups by completion status.
+Candidates are in 'ID NAME' format. Sorts with incomplete stories first,
+then completed stories. Within each completion status, sorts by ID descending."
+  (sort candidates
+        (lambda (a b)
+          ;; Extract ID from "ID NAME" format
+          (let* ((id-a (when (string-match "^\\([0-9]+\\)" a)
+                         (match-string 1 a)))
+                 (id-b (when (string-match "^\\([0-9]+\\)" b)
+                         (match-string 1 b)))
+                 ;; Get completion status from cache
+                 (story-a (when id-a (gethash id-a shortcut--story-cache)))
+                 (story-b (when id-b (gethash id-b shortcut--story-cache)))
+                 (completed-a (and story-a (not (eq (alist-get 'completed story-a) :json-false))))
+                 (completed-b (and story-b (not (eq (alist-get 'completed story-b) :json-false)))))
+            (cond
+              ;; If completion status differs, incomplete stories come first
+              ((and (not completed-a) completed-b) t)
+              ((and completed-a (not completed-b)) nil)
+              ;; If both have same completion status, sort by ID descending (most recent first)
+              (t (and id-a id-b (> (string-to-number id-a) (string-to-number id-b)))))))))
+
 ;; NB(@jinnovation): How can we get the substring to properly be sent in unconditionally when using
 ;; something like vertico-prescient-mode, which seems to send empty string on some cases?
 (defun shortcut--story-completion-table (string predicate action)
@@ -305,7 +328,8 @@ and ACTION is the completion action (t, lambda, metadata, etc.)."
        ;; FIXME: affixation takes precedent over annotation-function. How can we include the
        ;; annotation info but not allow completing on it?
        (annotation-function . shortcut--story-annotation-function)
-       (group-function . shortcut--story-group-function)))
+       (group-function . shortcut--story-group-function)
+       (display-sort-function . shortcut--story-display-sort-function)))
     ('lambda
         ;; Test if STRING is a valid completion
         (let ((candidates (shortcut--story-cache-candidates)))
@@ -520,6 +544,18 @@ Returns a merged alist sorted by ID (most recent first)."
         (push (cons display-key id) merged)))
     merged))
 
+(defun shortcut--epic-display-sort-function (candidates)
+  "Sort epic CANDIDATES within groups by ID in descending order.
+Candidates are in 'ID NAME' format. Sorts by epic ID (most recent first)."
+  (sort candidates
+        (lambda (a b)
+          ;; Extract ID from "ID NAME" format
+          (let ((id-a (when (string-match "^\\([0-9]+\\)" a)
+                        (string-to-number (match-string 1 a))))
+                (id-b (when (string-match "^\\([0-9]+\\)" b)
+                        (string-to-number (match-string 1 b)))))
+            (and id-a id-b (> id-a id-b))))))
+
 (defun shortcut--epic-completion-table (string predicate action)
   "Completion table function for epic selection with dynamic search.
 STRING is the current input, PREDICATE is the completion predicate,
@@ -528,7 +564,8 @@ and ACTION is the completion action (t, lambda, metadata, etc.)."
     ('metadata
      '(metadata (category . shortcut-epic)
        (annotation-function . shortcut--epic-annotation-function)
-       (group-function . shortcut--epic-group-function)))
+       (group-function . shortcut--epic-group-function)
+       (display-sort-function . shortcut--epic-display-sort-function)))
     ('lambda
         ;; Test if STRING is a valid completion
         (let ((candidates (shortcut--epic-cache-candidates)))
