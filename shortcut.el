@@ -5,7 +5,7 @@
 ;; Author: Jonathan Jin <me@jonathanj.in>
 ;; URL: https://github.com/jinnovation/shortcut.el
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "27.1") (transient "0.3.0") (magit-section "3.3.0"))
+;; Package-Requires: ((emacs "28.1") (transient "0.3.0") (magit-section "4.0.0"))
 ;; Keywords: tools, convenience, project, project-management
 
 ;; This file is not part of GNU Emacs.
@@ -506,9 +506,9 @@ and ACTION is the completion action (t, lambda, metadata, etc.)."
        (annotation-function . shortcut--epic-annotation-function)
        (group-function . shortcut--epic-group-function)))
     ('lambda
-     ;; Test if STRING is a valid completion
-     (let ((candidates (shortcut--epic-cache-candidates)))
-       (test-completion string candidates predicate)))
+        ;; Test if STRING is a valid completion
+        (let ((candidates (shortcut--epic-cache-candidates)))
+          (test-completion string candidates predicate)))
     ('t
      ;; Return all completions matching STRING
      (let* ((cache-candidates (shortcut--epic-cache-candidates))
