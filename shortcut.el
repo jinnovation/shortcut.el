@@ -324,45 +324,59 @@ then completed stories.  Within each completion status, sorts by ID descending."
               ;; If both have same completion status, sort by ID descending (most recent first)
               (t (and id-a id-b (> (string-to-number id-a) (string-to-number id-b)))))))))
 
-;; NB(@jinnovation): How can we get the substring to properly be sent in unconditionally when using
-;; something like vertico-prescient-mode, which seems to send empty string on some cases?
+(cl-defun shortcut--make-completion-table (&key category
+                                             cache-fn
+                                             search-fn
+                                             merge-fn
+                                             should-search-fn
+                                             annotation-fn
+                                             group-fn
+                                             sort-fn)
+  "Create a completion table function for entity type.
+CATEGORY is the completion category symbol.
+CACHE-FN is a function to get cache candidates.
+SEARCH-FN is a function to search API.
+MERGE-FN is a function to merge candidates.
+SHOULD-SEARCH-FN is a function to check if search is needed.
+ANNOTATION-FN is the annotation function.
+GROUP-FN is the group function.
+SORT-FN is the display sort function."
+  (lambda (string predicate action)
+    (pcase action
+      ('metadata
+       `(metadata (category . ,category)
+                  (annotation-function . ,annotation-fn)
+                  (group-function . ,group-fn)
+                  (display-sort-function . ,sort-fn)))
+      ('lambda
+          (let ((candidates (funcall cache-fn)))
+            (test-completion string candidates predicate)))
+      ('t
+       (let* ((cache-candidates (funcall cache-fn))
+              (candidates
+               (if (funcall should-search-fn string)
+                   (let ((search-results (funcall search-fn string)))
+                     (funcall merge-fn cache-candidates search-results))
+                 cache-candidates)))
+         (all-completions string candidates predicate)))
+      (_
+       (let ((cache-candidates (funcall cache-fn)))
+         (try-completion string cache-candidates predicate))))))
+
 (defun shortcut--story-completion-table (string predicate action)
   "Completion table function for story selection with dynamic search.
 STRING is the current input, PREDICATE is the completion predicate,
 and ACTION is the completion action (t, lambda, metadata, etc.)."
-  ;; TODO: How to set substring search style for this specifically?
-  (pcase action
-    ('metadata
-     ;; Return completion metadata with affixation function for prefix and annotation function for suffix
-     '(metadata (category . shortcut-story)
-       ;; NB(@jinnovation): Affixation function only adds `sc-` prefix. Not very useful. Consider removing.'
-       ;; (affixation-function . shortcut--story-affixation-function)
-
-       ;; FIXME: affixation takes precedent over annotation-function. How can we include the
-       ;; annotation info but not allow completing on it?
-       (annotation-function . shortcut--story-annotation-function)
-       (group-function . shortcut--story-group-function)
-       (display-sort-function . shortcut--story-display-sort-function)))
-    ('lambda
-        ;; Test if STRING is a valid completion
-        (let ((candidates (shortcut--story-cache-candidates)))
-          (test-completion string candidates predicate)))
-    ('t
-     ;; Return all completions matching STRING
-     (let* ((cache-candidates (shortcut--story-cache-candidates))
-            (candidates
-             (if (shortcut--story-should-search-p string)
-                 (progn
-                   ;; Perform search and merge with cache
-                   (let ((search-ids (shortcut--stories-search string)))
-                     (shortcut--story-merge-candidates cache-candidates search-ids)))
-               ;; Just use cache if search not triggered
-               cache-candidates)))
-       (all-completions string candidates predicate)))
-    (_
-     ;; Default: try-completion
-     (let ((cache-candidates (shortcut--story-cache-candidates)))
-       (try-completion string cache-candidates predicate)))))
+  (funcall (shortcut--make-completion-table
+            :category 'shortcut-story
+            :cache-fn #'shortcut--story-cache-candidates
+            :search-fn #'shortcut--stories-search
+            :merge-fn #'shortcut--story-merge-candidates
+            :should-search-fn #'shortcut--story-should-search-p
+            :annotation-fn #'shortcut--story-annotation-function
+            :group-fn #'shortcut--story-group-function
+            :sort-fn #'shortcut--story-display-sort-function)
+           string predicate action))
 
 (defun shortcut--story-get (story-id)
   "Get the JSON payload for a story with STORY-ID.
@@ -418,6 +432,53 @@ Uses the Shortcut Search API with the authenticated user's mention name."
 
 (defvar-local shortcut-stories-list--vtable nil
   "The vtable object for the stories list buffer.")
+
+(defun shortcut--vtable-get-id (story _index)
+  "Get formatted ID for STORY."
+  (propertize (format "sc-%d" (alist-get 'id story))
+              'face 'shortcut-id))
+
+(defun shortcut--vtable-get-title (story _index)
+  "Get formatted title for STORY."
+  (let* ((name (alist-get 'name story))
+         (completed (alist-get 'completed story)))
+    (if (and completed (not (eq completed :json-false)))
+        (propertize name 'face '(:strike-through t :foreground "grey"))
+      name)))
+
+(defun shortcut--vtable-get-state (story _index)
+  "Get formatted state for STORY."
+  (let* ((workflow-id (alist-get 'workflow_id story))
+         (state-id (alist-get 'workflow_state_id story))
+         (state-name (if (and workflow-id state-id)
+                         (shortcut--workflow-state-name workflow-id state-id)
+                       "Unknown")))
+    (propertize state-name 'face (shortcut--story-format-state state-name))))
+
+(defun shortcut--vtable-get-epic (story _index)
+  "Get formatted epic for STORY."
+  (let ((epic-id (alist-get 'epic_id story)))
+    (if epic-id
+        (or (shortcut--epic-name epic-id)
+            (format "sc-%d" epic-id))
+      "")))
+
+(defun shortcut--vtable-get-owner (story _index)
+  "Get formatted owner for STORY."
+  (let ((owner-ids (alist-get 'owner_ids story)))
+    (if (and owner-ids (> (length owner-ids) 0))
+        (shortcut--member-name (aref owner-ids 0))
+      "")))
+
+(defun shortcut--vtable-get-created-at (story _index)
+  "Get formatted creation timestamp for STORY."
+  (let ((created-at (alist-get 'created_at story)))
+    (or (shortcut--story-format-timestamp created-at) "")))
+
+(defun shortcut--vtable-get-deadline (story _index)
+  "Get formatted deadline for STORY."
+  (let ((deadline (alist-get 'deadline story)))
+    (or (shortcut--story-format-timestamp deadline) "")))
 
 (defun shortcut-stories-list-open-story ()
   "Open the story at point in a detail view."
@@ -478,45 +539,13 @@ Uses vtable to show story ID, title, state, epic, and owner."
           (setq shortcut-stories-list--vtable
                 (make-vtable
                  :columns
-                 '((:name "ID"
-                    :width 10
-                    :getter (lambda (story _index)
-                              (propertize (format "sc-%d" (alist-get 'id story))
-                                          'face 'shortcut-id)))
-                   (:name "Title"
-                    :width 50
-                    :getter (lambda (story _index)
-                              (let* ((name (alist-get 'name story))
-                                     (completed (alist-get 'completed story)))
-                                (if (and completed (not (eq completed :json-false)))
-                                    (propertize name
-                                                'face '(:strike-through t :foreground "grey"))
-                                  name))))
-                   (:name "State"
-                    :width 15
-                    :getter (lambda (story _index)
-                              (let* ((workflow-id (alist-get 'workflow_id story))
-                                     (state-id (alist-get 'workflow_state_id story))
-                                     (state-name (if (and workflow-id state-id)
-                                                     (shortcut--workflow-state-name workflow-id state-id)
-                                                   "Unknown")))
-                                (propertize state-name
-                                            'face (shortcut--story-format-state state-name)))))
-                   (:name "Epic"
-                    :width 30
-                    :getter (lambda (story _index)
-                              (let ((epic-id (alist-get 'epic_id story)))
-                                (if epic-id
-                                    (or (shortcut--epic-name epic-id)
-                                        (format "sc-%d" epic-id))
-                                  ""))))
-                   (:name "Owner"
-                    :width 20
-                    :getter (lambda (story _index)
-                              (let ((owner-ids (alist-get 'owner_ids story)))
-                                (if (and owner-ids (> (length owner-ids) 0))
-                                    (shortcut--member-name (aref owner-ids 0))
-                                  "")))))
+                 '((:name "ID" :width 10 :getter shortcut--vtable-get-id)
+                   (:name "Title" :width 50 :getter shortcut--vtable-get-title)
+                   (:name "State" :width 15 :getter shortcut--vtable-get-state)
+                   (:name "Epic" :width 30 :getter shortcut--vtable-get-epic)
+                   (:name "Owner" :width 20 :getter shortcut--vtable-get-owner)
+                   (:name "Created At" :width 16 :getter shortcut--vtable-get-created-at)
+                   (:name "Deadline" :width 16 :getter shortcut--vtable-get-deadline))
                  :objects stories
                  :actions '("RET" shortcut-stories-list-open-story
                             "<mouse-1>" shortcut-stories-list-open-story-at-mouse)))
@@ -798,32 +827,16 @@ Candidates are in \"ID NAME\" format.  Sorts by epic ID (most recent first)."
   "Completion table function for epic selection with dynamic search.
 STRING is the current input, PREDICATE is the completion predicate,
 and ACTION is the completion action (t, lambda, metadata, etc.)."
-  (pcase action
-    ('metadata
-     '(metadata (category . shortcut-epic)
-       (annotation-function . shortcut--epic-annotation-function)
-       (group-function . shortcut--epic-group-function)
-       (display-sort-function . shortcut--epic-display-sort-function)))
-    ('lambda
-        ;; Test if STRING is a valid completion
-        (let ((candidates (shortcut--epic-cache-candidates)))
-          (test-completion string candidates predicate)))
-    ('t
-     ;; Return all completions matching STRING
-     (let* ((cache-candidates (shortcut--epic-cache-candidates))
-            (candidates
-             (if (shortcut--epic-should-search-p string)
-                 (progn
-                   ;; Perform search and merge with cache
-                   (let ((search-ids (shortcut--epics-search string)))
-                     (shortcut--epic-merge-candidates cache-candidates search-ids)))
-               ;; Just use cache if search not triggered
-               cache-candidates)))
-       (all-completions string candidates predicate)))
-    (_
-     ;; Default: try-completion
-     (let ((cache-candidates (shortcut--epic-cache-candidates)))
-       (try-completion string cache-candidates predicate)))))
+  (funcall (shortcut--make-completion-table
+            :category 'shortcut-epic
+            :cache-fn #'shortcut--epic-cache-candidates
+            :search-fn #'shortcut--epics-search
+            :merge-fn #'shortcut--epic-merge-candidates
+            :should-search-fn #'shortcut--epic-should-search-p
+            :annotation-fn #'shortcut--epic-annotation-function
+            :group-fn #'shortcut--epic-group-function
+            :sort-fn #'shortcut--epic-display-sort-function)
+           string predicate action))
 
 (defun shortcut--epic-annotation-function (candidate)
   "Annotation function for epic completion.
