@@ -1733,14 +1733,6 @@ Returns the state as a string, or \"Unknown\" if not found."
         (shortcut--story-insert-header "State" state
                                        (shortcut--story-format-state state))
 
-        (when-let ((health (shortcut--epic-health id)))
-          (let ((health-status (car health))
-                (health-text (cdr health)))
-            (shortcut--story-insert-header "Health" health-status
-                                           (shortcut--epic-format-health-status health-status))
-            (when (and health-text (not (string-empty-p health-text)))
-              (shortcut--story-insert-header "Health Note" health-text))))
-
         (when owner-ids
           (shortcut--story-insert-header "Owners"
                                          (mapconcat #'shortcut--member-name
@@ -1781,6 +1773,17 @@ Returns the state as a string, or \"Unknown\" if not found."
           (shortcut--story-insert-header "URL" app-url))
 
         (insert "\n"))
+
+      (when-let ((health (shortcut--epic-health id)))
+        (let ((health-status (car health))
+              (health-text (cdr health)))
+          (magit-insert-section (health)
+            (magit-insert-heading "Health")
+            (shortcut--story-insert-header "Status" health-status
+                                           (shortcut--epic-format-health-status health-status))
+            (when (and health-text (not (string-empty-p health-text)))
+              (shortcut--story-insert-header "Note" health-text))
+            (insert "\n"))))
 
       (shortcut--epic-insert-stats stats)
       (shortcut--story-insert-description description)
