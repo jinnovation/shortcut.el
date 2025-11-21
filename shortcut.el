@@ -35,6 +35,7 @@
 (require 'json)
 (require 'transient)
 (require 'magit-section)
+(require 'wid-edit)
 
 (defgroup shortcut nil
   "Emacs integration for Shortcut project management."
@@ -73,7 +74,7 @@ Keys are workflow IDs (as strings), values are workflow objects.")
 ;; FIXME: Will need some way to expire/TTL these, e.g. to account for title changes
 (defvar shortcut--story-cache (make-hash-table :test 'equal)
   "Cache for story information.
-Keys are story IDs (as strings), values are alists with at least 'name field.")
+Keys are story IDs (as strings), values are alists with at least `name' field.")
 
 (defvar shortcut--epic-cache (make-hash-table :test 'equal)
   "Cache for epic information.
@@ -172,7 +173,7 @@ METHOD defaults to GET.  Returns the parsed JSON response."
 
 (defun shortcut--story-cache-add (story)
   "Add STORY to the cache, storing its ID, name, epic, author, and completion.
-STORY should be an alist with at least 'id and 'name fields."
+STORY should be an alist with at least `id' and `name' fields."
   (when-let ((id (alist-get 'id story))
              (name (alist-get 'name story)))
     (let ((epic-id (alist-get 'epic_id story))
@@ -190,8 +191,8 @@ STORY should be an alist with at least 'id and 'name fields."
 
 (defun shortcut--story-cache-candidates ()
   "Get a list of story candidates from cache for `completing-read'.
-Returns an alist where keys are 'ID TITLE' strings for matching,
-and values are the story IDs (as strings without 'sc-' prefix).
+Returns an alist where keys are \"ID TITLE\" strings for matching,
+and values are the story IDs (as strings without \"sc-\" prefix).
 Completed stories are displayed with strikethrough and grey color."
   (let ((candidates '()))
     (maphash (lambda (key value)
@@ -218,8 +219,8 @@ Completed stories are displayed with strikethrough and grey color."
 
 (defun shortcut--stories-search (input)
   "Search for stories using the Shortcut Search API with INPUT string.
-Returns an alist where keys are 'ID TITLE' display strings (with propertized ID)
-and values are story IDs (as strings without 'sc-' prefix).
+Returns an alist where keys are \"ID TITLE\" display strings (with propertized ID)
+and values are story IDs (as strings without \"sc-\" prefix).
 Caches retrieved stories in `shortcut--story-cache'."
   (condition-case err
       (let* ((query (if (string-empty-p input)
@@ -292,7 +293,7 @@ Completed stories are displayed with strikethrough and grey color."
 
 (defun shortcut--story-display-sort-function (candidates)
   "Sort story CANDIDATES within groups by completion status.
-Candidates are in 'ID NAME' format.  Sorts with incomplete stories first,
+Candidates are in \"ID NAME\" format.  Sorts with incomplete stories first,
 then completed stories.  Within each completion status, sorts by ID descending."
   (sort candidates
         (lambda (a b)
@@ -396,7 +397,7 @@ Results are cached in `shortcut--member-cache'."
 (defun shortcut--member-name (member-id)
   "Get the name of the member with MEMBER-ID.
 Returns the member name as a string, or the ID if lookup fails."
-  (condition-case err
+  (condition-case nil
       (let ((member (shortcut-member-get member-id)))
         (or (alist-get 'name (alist-get 'profile member))
             (alist-get 'name member)
@@ -416,7 +417,7 @@ Results are cached in `shortcut--workflow-cache'."
 (defun shortcut--workflow-state-name (workflow-id workflow-state-id)
   "Get the name of the workflow state with WORKFLOW-STATE-ID in WORKFLOW-ID.
 Returns the state name as a string, or \"Unknown\" if lookup fails."
-  (condition-case err
+  (condition-case nil
       (let* ((workflow (shortcut--workflow-get workflow-id))
              (states (alist-get 'states workflow))
              (state (seq-find (lambda (s)
@@ -427,7 +428,7 @@ Returns the state name as a string, or \"Unknown\" if lookup fails."
 
 (defun shortcut--workflow-states-get (workflow-id)
   "Get all workflow states for WORKFLOW-ID.
-Returns a vector of state objects, each with 'id and 'name fields."
+Returns a vector of state objects, each with `id' and `name' fields."
   (let* ((workflow (shortcut--workflow-get workflow-id))
          (states (alist-get 'states workflow)))
     (or states [])))
@@ -444,7 +445,7 @@ Results are cached in `shortcut--epic-cache'."
 
 (defun shortcut--epic-cache-add (epic)
   "Add EPIC to the cache, storing its ID, name, and state.
-EPIC should be an alist with at least 'id and 'name fields."
+EPIC should be an alist with at least `id' and `name' fields."
   (when-let ((id (alist-get 'id epic))
              (name (alist-get 'name epic)))
     (let ((state (alist-get 'state epic))
@@ -458,8 +459,8 @@ EPIC should be an alist with at least 'id and 'name fields."
 
 (defun shortcut--epic-cache-candidates ()
   "Get a list of epic candidates from cache for `completing-read'.
-Returns an alist where keys are 'ID NAME' strings for matching,
-and values are the epic IDs (as strings without 'sc-' prefix)."
+Returns an alist where keys are \"ID NAME\" strings for matching,
+and values are the epic IDs (as strings without \"sc-\" prefix)."
   (let ((candidates '()))
     (maphash (lambda (key value)
                (let* ((id key)
@@ -480,15 +481,15 @@ and values are the epic IDs (as strings without 'sc-' prefix)."
   "Get the name of the epic with EPIC-ID.
 Returns the epic name as a string, or nil if lookup fails or epic-id is nil."
   (when epic-id
-    (condition-case err
+    (condition-case nil
         (let ((epic (shortcut--epic-get epic-id)))
           (alist-get 'name epic))
       (error nil))))
 
 (defun shortcut--epics-search (input)
   "Search for epics using the Shortcut Search API with INPUT string.
-Returns an alist where keys are 'ID NAME' display strings (with propertized ID)
-and values are epic IDs (as strings without 'sc-' prefix).
+Returns an alist where keys are \"ID NAME\" display strings (with propertized ID)
+and values are epic IDs (as strings without \"sc-\" prefix).
 Caches retrieved epics in `shortcut--epic-cache'."
   (condition-case err
       (let* ((query (if (string-empty-p input)
@@ -548,7 +549,7 @@ Returns a merged alist sorted by ID (most recent first)."
 
 (defun shortcut--epic-display-sort-function (candidates)
   "Sort epic CANDIDATES within groups by ID in descending order.
-Candidates are in 'ID NAME' format.  Sorts by epic ID (most recent first)."
+Candidates are in \"ID NAME\" format.  Sorts by epic ID (most recent first)."
   (sort candidates
         (lambda (a b)
           ;; Extract ID from "ID NAME" format
@@ -591,7 +592,7 @@ and ACTION is the completion action (t, lambda, metadata, etc.)."
 
 (defun shortcut--epic-annotation-function (candidate)
   "Annotation function for epic completion.
-CANDIDATE is a display key string in format 'ID NAME'.
+CANDIDATE is a display key string in format \"ID NAME\".
 Returns an annotation string with state and owner."
   (let* (;; Extract the epic ID from the candidate string
          (id (when (string-match "^\\([0-9]+\\)" candidate)
@@ -617,7 +618,7 @@ Returns an annotation string with state and owner."
 
 (defun shortcut--epic-group-function (candidate transform)
   "Group function for epic completion.
-CANDIDATE is a display key string in format 'ID NAME'.
+CANDIDATE is a display key string in format \"ID NAME\".
 TRANSFORM is either nil (return group title) or non-nil (return transformed
 candidate).  Groups epics by their state."
   (if transform
@@ -854,23 +855,22 @@ If there are no tasks, shows a placeholder."
                    (description (alist-get 'description task))
                    (task-id (alist-get 'id task)))
               (insert "  ")
-              (let ((widget-start (point)))
-                (widget-create 'checkbox
-                               :value complete
-                               :notify (lambda (widget &rest _)
-                                         (let ((new-value (widget-value widget)))
-                                           (condition-case err
-                                               (progn
-                                                 (message "Updating task...")
-                                                 (shortcut--story-task-update
-                                                  shortcut-story--current-id
-                                                  task-id
-                                                  new-value)
-                                                 (shortcut-story-refresh)
-                                                 (message "Task updated successfully"))
-                                             (error
-                                              (message "Failed to update task: %s" (error-message-string err))
-                                              (shortcut-story-refresh)))))))
+              (widget-create 'checkbox
+                             :value complete
+                             :notify (lambda (widget &rest _)
+                                       (let ((new-value (widget-value widget)))
+                                         (condition-case err
+                                             (progn
+                                               (message "Updating task...")
+                                               (shortcut--story-task-update
+                                                shortcut-story--current-id
+                                                task-id
+                                                new-value)
+                                               (shortcut-story-refresh)
+                                               (message "Task updated successfully"))
+                                           (error
+                                            (message "Failed to update task: %s" (error-message-string err))
+                                            (shortcut-story-refresh))))))
               (insert " ")
               (let ((formatted-desc (shortcut--fontify-markdown description)))
                 (if complete
@@ -885,7 +885,7 @@ If there are no tasks, shows a placeholder."
 (defun shortcut--story-link-invert-verb (verb)
   "Invert the relationship VERB for story links.
 When the current story is the subject, we need to invert the verb.
-For example: 'blocks' becomes 'blocked by', 'relates to' stays 'relates to'."
+For example: \"blocks\" becomes \"blocked by\", \"relates to\" stays \"relates to\"."
   (pcase verb
     ("blocks" "blocked by")
     ("duplicates" "duplicated by")
@@ -1101,8 +1101,7 @@ If there are no comments, shows a placeholder."
           (let* ((epic-name (shortcut--epic-name epic-id))
                  (text (if epic-name
                            (format "sc-%d %s" epic-id epic-name)
-                         (format "sc-%d" epic-id)))
-                 (start (point)))
+                         (format "sc-%d" epic-id))))
             (insert (propertize text
                                 'font-lock-face 'shortcut-id
                                 'mouse-face 'highlight
@@ -1177,7 +1176,7 @@ candidate, adding \\'sc-\\' prefix."
 
 (defun shortcut--story-annotation-function (candidate)
   "Annotation function for story completion.
-CANDIDATE is a display key string in format 'ID TITLE'.
+CANDIDATE is a display key string in format \"ID TITLE\".
 Returns an annotation string with epic name and author."
   (let* (;; Extract the story ID from the candidate string using regex
          ;; Candidate format is "ID TITLE" where ID is a sequence of digits
@@ -1206,10 +1205,10 @@ Returns an annotation string with epic name and author."
 
 (defun shortcut--story-group-function (candidate transform)
   "Group function for story completion.
-CANDIDATE is a display key string in format 'ID TITLE'.
+CANDIDATE is a display key string in format \"ID TITLE\".
 TRANSFORM is either nil (return group title) or non-nil (return transformed
 candidate).  Groups stories by their epic name, with stories without epics
-in 'No Epic' group."
+in \"No Epic\" group."
   (if transform
       ;; When TRANSFORM is non-nil, return the candidate as-is
       candidate
@@ -1498,7 +1497,7 @@ Results are cached in `shortcut--current-member-cache'."
 (defun shortcut--workspace-name ()
   "Get the name of the current workspace.
 Returns the workspace name as a string, or \"Unknown\" if lookup fails."
-  (condition-case err
+  (condition-case nil
       (let* ((member (shortcut--member-current))
              (workspace (alist-get 'workspace2 member)))
         (or (alist-get 'name workspace) "Unknown"))
@@ -1507,7 +1506,7 @@ Returns the workspace name as a string, or \"Unknown\" if lookup fails."
 (defun shortcut--current-user-name ()
   "Get the name of the current authenticated user.
 Returns the user name as a string, or \"Unknown\" if lookup fails."
-  (condition-case err
+  (condition-case nil
       (or (alist-get 'name (shortcut--member-current)) "Unknown")
     (error "Unknown")))
 
