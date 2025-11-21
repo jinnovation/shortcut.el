@@ -6,6 +6,7 @@
   (undercover "*.el"
               (:report-file "./coverage/lcov-buttercup.info")
               (:report-format 'lcov)
+              (:merge-report nil)
               (:send-report nil)))
 
 (require 'buttercup)
