@@ -817,11 +817,15 @@ Optional FACE is applied to the value."
                         (encode-time (parse-time-string timestamp)))))
 
 (defun shortcut--story-insert-description (description)
-  "Insert the story DESCRIPTION with proper formatting."
-  (when (and description (not (string-empty-p description)))
-    (magit-insert-section (description)
-      (magit-insert-heading "Description")
-      (insert (shortcut--fontify-markdown description))
+  "Insert the story DESCRIPTION with proper formatting.
+If DESCRIPTION is empty, shows a placeholder."
+  (magit-insert-section (description)
+    (magit-insert-heading "Description")
+    (if (and description (not (string-empty-p description)))
+        (progn
+          (insert (shortcut--fontify-markdown description))
+          (insert "\n\n"))
+      (insert (propertize "empty" 'font-lock-face 'shortcut-placeholder))
       (insert "\n\n"))))
 
 (defun shortcut--story-insert-tasks (tasks)
@@ -949,19 +953,22 @@ Recursively inserts any nested reply comments based on parent_id."
 
 (defun shortcut--story-insert-comments (comments)
   "Insert all COMMENTS for the story.
-Builds a threaded view based on parent_id relationships."
-  (when (and comments (> (length comments) 0))
-    (magit-insert-section (comments nil t)
-      (magit-insert-heading "Comments")
-      (magit-insert-section-body
-        ;; Insert only top-level comments (those without a parent_id or with null parent_id)
-        (let ((top-level-comments (seq-filter (lambda (c)
-                                                (let ((parent-id (alist-get 'parent_id c)))
-                                                  (or (null parent-id)
-                                                      (eq parent-id :null))))
-                                              comments)))
-          (seq-doseq (comment top-level-comments)
-            (shortcut--story-insert-comment comment comments)))))))
+Builds a threaded view based on parent_id relationships.
+If there are no comments, shows a placeholder."
+  (magit-insert-section (comments nil t)
+    (magit-insert-heading "Comments")
+    (magit-insert-section-body
+      (if (and comments (> (length comments) 0))
+          ;; Insert only top-level comments (those without a parent_id or with null parent_id)
+          (let ((top-level-comments (seq-filter (lambda (c)
+                                                  (let ((parent-id (alist-get 'parent_id c)))
+                                                    (or (null parent-id)
+                                                        (eq parent-id :null))))
+                                                comments)))
+            (seq-doseq (comment top-level-comments)
+              (shortcut--story-insert-comment comment comments)))
+        (insert (propertize "empty" 'font-lock-face 'shortcut-placeholder))
+        (insert "\n\n")))))
 
 (defun shortcut--story-format-buffer (story)
   "Format STORY data into a readable buffer similar to Forge PR buffers."
