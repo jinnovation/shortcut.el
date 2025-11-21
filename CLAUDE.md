@@ -16,3 +16,8 @@
 
 - In general, base your implementations and designs off of the following Emacs packages: Magit and
   Forge. Their implementations can be found on GitHub.
+
+
+## Testing
+
+- Always check for balanced parentheses with `(progn (check-parens))`

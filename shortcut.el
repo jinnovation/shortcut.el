@@ -975,6 +975,8 @@ Builds a threaded view based on parent_id relationships."
            (workflow-state-name (shortcut--workflow-state-name workflow-id workflow-state-id))
            (labels (alist-get 'labels story))
            (owners (alist-get 'owner_ids story))
+           (followers (alist-get 'follower_ids story))
+           (requester-id (alist-get 'requested_by_id story))
            (estimate (alist-get 'estimate story))
            (epic-id (alist-get 'epic_id story))
            (iteration-id (alist-get 'iteration_id story))
@@ -1006,7 +1008,12 @@ Builds a threaded view based on parent_id relationships."
         (when estimate
           (shortcut--story-insert-header "Estimate" (format "%d points" estimate)))
         (when epic-id
-          (shortcut--story-insert-header "Epic" (format "sc-%d" epic-id) 'shortcut-id))
+          (let ((epic-name (shortcut--epic-name epic-id)))
+            (shortcut--story-insert-header "Epic"
+                                           (if epic-name
+                                               (format "sc-%d %s" epic-id epic-name)
+                                             (format "sc-%d" epic-id))
+                                           'shortcut-id)))
         (when iteration-id
           (shortcut--story-insert-header "Iteration" (format "sc-%d" iteration-id) 'shortcut-id))
 
@@ -1016,6 +1023,15 @@ Builds a threaded view based on parent_id relationships."
           (shortcut--story-insert-header "Owners"
                                          (mapconcat #'shortcut--member-name
                                                     owners ", ")))
+
+        (when followers
+          (shortcut--story-insert-header "Followers"
+                                         (mapconcat #'shortcut--member-name
+                                                    followers ", ")))
+
+        (when requester-id
+          (shortcut--story-insert-header "Requester"
+                                         (shortcut--member-name requester-id)))
 
         (if deadline
             (shortcut--story-insert-header "Deadline" (shortcut--story-format-timestamp deadline))
