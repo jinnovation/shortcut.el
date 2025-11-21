@@ -645,30 +645,26 @@ If on a widget, activate it.  Otherwise, browse the story URL."
       (widget-button-press (point))
     (shortcut-story-browse-url)))
 
-(defvar shortcut-base-map
-  (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "q") 'quit-window)
-    map)
-  "Base keymap for Shortcut modes.")
-
 (define-derived-mode shortcut-base-mode magit-section-mode "Shortcut"
                      "Base major mode for viewing Shortcut entities.
 
-\\{shortcut-base-map}"
+\\{shortcut-base-mode-map}"
                      :group 'shortcut
                      (setq truncate-lines t)
                      (goto-address-mode +1))
 
-(defvar shortcut-story-mode-map
-  (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map shortcut-base-map)
-    (define-key map (kbd "g") 'shortcut-story-refresh)
-    (define-key map (kbd "C-c C-o") 'shortcut-story-browse-url)
-    (define-key map (kbd "RET") 'shortcut-story-ret)
-    (define-key map (kbd "M-w") 'shortcut-story-copy-id)
-    (define-key map (kbd "s") 'shortcut-story-set-state)
-    map)
-  "Keymap for `shortcut-story-mode'.")
+(defvar-keymap shortcut-base-mode-map
+  :parent magit-section-mode-map
+  "q" #'quit-window)
+
+(defvar-keymap shortcut-story-mode-map
+  :parent shortcut-base-mode-map
+  :doc "Keymap for `shortcut-story-mode'."
+  "g" #'shortcut-story-refresh
+  "C-c C-o" #'shortcut-story-browse-url
+  "RET" #'shortcut-story-ret
+  "M-w" #'shortcut-story-copy-id
+  "s" #'shortcut-story-set-state)
 
 (defvar-local shortcut-story--current-id nil
   "The ID of the story currently displayed in this buffer.")
@@ -1260,15 +1256,13 @@ If on a widget, activate it.  Otherwise, browse the epic URL."
       (widget-button-press (point))
     (shortcut-epic-browse-url)))
 
-(defvar shortcut-epic-mode-map
-  (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map shortcut-base-map)
-    (define-key map (kbd "g") 'shortcut-epic-refresh)
-    (define-key map (kbd "C-c C-o") 'shortcut-epic-browse-url)
-    (define-key map (kbd "RET") 'shortcut-epic-ret)
-    (define-key map (kbd "M-w") 'shortcut-epic-copy-id)
-    map)
-  "Keymap for `shortcut-epic-mode'.")
+(defvar-keymap shortcut-epic-mode-map
+  :parent shortcut-base-mode-map
+  :doc "Keymap for `shortcut-epic-mode'."
+  "g" #'shortcut-epic-refresh
+  "C-c C-o" #'shortcut-epic-browse-url
+  "RET" #'shortcut-epic-ret
+  "M-w" #'shortcut-epic-copy-id)
 
 (defvar-local shortcut-epic--current-id nil
   "The ID of the epic currently displayed in this buffer.")
