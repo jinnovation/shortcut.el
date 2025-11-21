@@ -41,6 +41,57 @@
         ;; Verify the story was cached (cache uses string keys)
         (expect (gethash (format "%s" story-id) shortcut--story-cache) :not :to-be nil)))))
 
+(describe "shortcut--epic-get"
+  (before-each
+    ;; Clear the cache before each test
+    (clrhash shortcut--epic-cache))
+
+  (it "should fetch and cache an epic from the API"
+    (let ((epic-id 67890))
+      ;; Mock the API request function to return fixture data
+      (spy-on 'shortcut--api-request
+              :and-return-value shortcut-test-epic-fixture)
+
+      ;; Call the function under test
+      (let ((result (shortcut--epic-get epic-id)))
+        ;; Verify API was called with correct endpoint
+        (expect 'shortcut--api-request
+                :to-have-been-called-with "/epics/67890")
+
+        ;; Verify the result matches the fixture
+        (expect result :to-equal shortcut-test-epic-fixture)
+
+        ;; Verify the epic ID is in the result
+        (expect (alist-get 'id result) :to-equal epic-id)
+
+        ;; Verify the epic name is correct
+        (expect (alist-get 'name result) :to-equal "Test Epic")
+
+        ;; Verify the epic was cached (cache uses string keys)
+        (expect (gethash (format "%s" epic-id) shortcut--epic-cache) :not :to-be nil))))
+
+  (it "should return cached epic on second call without hitting API"
+    (let ((epic-id 67890))
+      ;; Mock the API request function
+      (spy-on 'shortcut--api-request
+              :and-return-value shortcut-test-epic-fixture)
+
+      ;; First call - should hit API
+      (shortcut--epic-get epic-id)
+      (expect 'shortcut--api-request :to-have-been-called-times 1)
+
+      ;; Second call - should use cache
+      (let ((result (shortcut--epic-get epic-id)))
+        ;; API should still only have been called once
+        (expect 'shortcut--api-request :to-have-been-called-times 1)
+
+        ;; Result should still be correct (cached version with subset of fields)
+        (expect (alist-get 'id result) :to-equal epic-id)
+        (expect (alist-get 'name result) :to-equal "Test Epic")
+        (expect (alist-get 'state result) :to-equal "in progress")
+        (expect (alist-get 'app_url result) :to-equal "https://app.shortcut.com/org/epic/67890")
+        (expect (alist-get 'description result) :to-equal "This is a test epic")))))
+
 (describe "shortcut-member-get"
   (before-each
     ;; Clear the cache before each test
