@@ -92,6 +92,53 @@
         (expect (alist-get 'app_url result) :to-equal "https://app.shortcut.com/org/epic/67890")
         (expect (alist-get 'description result) :to-equal "This is a test epic")))))
 
+(describe "shortcut--workflow-get"
+  (before-each
+    ;; Clear the cache before each test
+    (clrhash shortcut--workflow-cache))
+
+  (it "should fetch and cache a workflow from the API"
+    (let ((workflow-id 500000000))
+      ;; Mock the API request function to return fixture data
+      (spy-on 'shortcut--api-request
+              :and-return-value shortcut-test-workflow-fixture)
+
+      ;; Call the function under test
+      (let ((result (shortcut--workflow-get workflow-id)))
+        ;; Verify API was called with correct endpoint
+        (expect 'shortcut--api-request
+                :to-have-been-called-with "/workflows/500000000")
+
+        ;; Verify the result matches the fixture
+        (expect result :to-equal shortcut-test-workflow-fixture)
+
+        ;; Verify the workflow ID is in the result
+        (expect (alist-get 'id result) :to-equal workflow-id)
+
+        ;; Verify the workflow name is correct
+        (expect (alist-get 'name result) :to-equal "Default Workflow")
+
+        ;; Verify the workflow was cached (cache uses string keys)
+        (expect (gethash (format "%s" workflow-id) shortcut--workflow-cache) :not :to-be nil))))
+
+  (it "should return cached workflow on second call without hitting API"
+    (let ((workflow-id 500000000))
+      ;; Mock the API request function
+      (spy-on 'shortcut--api-request
+              :and-return-value shortcut-test-workflow-fixture)
+
+      ;; First call - should hit API
+      (shortcut--workflow-get workflow-id)
+      (expect 'shortcut--api-request :to-have-been-called-times 1)
+
+      ;; Second call - should use cache
+      (let ((result (shortcut--workflow-get workflow-id)))
+        ;; API should still only have been called once
+        (expect 'shortcut--api-request :to-have-been-called-times 1)
+
+        ;; Result should still be correct (full fixture since workflow caches everything)
+        (expect result :to-equal shortcut-test-workflow-fixture)))))
+
 (describe "shortcut-member-get"
   (before-each
     ;; Clear the cache before each test
