@@ -96,6 +96,21 @@ This is useful when cached story information becomes stale or outdated."
   (interactive)
   (setq shortcut--story-cache (make-hash-table :test 'equal)))
 
+(defun shortcut--clear-all-caches ()
+  "Clear all Shortcut caches.
+This clears story, epic, member, workflow, workflow state, and group caches,
+as well as the current member cache.  Useful when cached information becomes
+stale or outdated."
+  (interactive)
+  (setq shortcut--story-cache (make-hash-table :test 'equal))
+  (setq shortcut--epic-cache (make-hash-table :test 'equal))
+  (setq shortcut--member-cache (make-hash-table :test 'equal))
+  (setq shortcut--workflow-cache (make-hash-table :test 'equal))
+  (setq shortcut--workflow-state-cache (make-hash-table :test 'equal))
+  (setq shortcut--group-cache (make-hash-table :test 'equal))
+  (setq shortcut--current-member-cache nil)
+  (message "Cleared all Shortcut caches"))
+
 ;;; Faces
 
 (defface shortcut-story-title
@@ -1850,7 +1865,8 @@ Results are added to the story cache for faster completion."
     ("c e" "epic" shortcut-epic-create :transient nil :inapt-if (lambda () t))]
    ["Experimental"
     ("x c" "pre-populate story cache with..." shortcut-story-cache-populate)
-    ("x C" "clear story cache" shortcut--clear-story-cache)]])
+    ("x C" "clear story cache" shortcut--clear-story-cache)
+    ("x X" "clear ALL caches" shortcut--clear-all-caches)]])
 
 (provide 'shortcut)
 
