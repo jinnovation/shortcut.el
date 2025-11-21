@@ -252,7 +252,7 @@
     ;; Clear the cache before each test
     (clrhash shortcut--epic-cache))
 
-  (it "should return health status and message as cons cell"
+  (it "should return health status, message, and updated-at as list"
     (let ((epic-id 67890))
       ;; Mock shortcut--epic-get to return fixture with health
       (spy-on 'shortcut--epic-get
@@ -260,10 +260,11 @@
 
       ;; Call the function under test
       (let ((result (shortcut--epic-health epic-id)))
-        ;; Should return a cons cell (STATUS . MESSAGE)
-        (expect (consp result) :to-be-truthy)
-        (expect (car result) :to-equal "On Track")
-        (expect (cdr result) :to-equal "All tasks on schedule"))))
+        ;; Should return a list (STATUS MESSAGE UPDATED-AT)
+        (expect (listp result) :to-be-truthy)
+        (expect (nth 0 result) :to-equal "On Track")
+        (expect (nth 1 result) :to-equal "All tasks on schedule")
+        (expect (nth 2 result) :to-equal "2024-01-15T14:00:00Z"))))
 
   (it "should return nil when epic-id is nil"
     (let ((result (shortcut--epic-health nil)))
@@ -296,7 +297,7 @@
         ;; Should return nil on error
         (expect result :to-be nil))))
 
-  (it "should handle health with status but no text"
+  (it "should handle health with status but no text or updated-at"
     (let ((epic-id 77777)
           (epic-with-status-only
            '((id . 77777)
@@ -308,9 +309,10 @@
 
       ;; Call the function under test
       (let ((result (shortcut--epic-health epic-id)))
-        ;; Should return cons cell with status and nil for text
-        (expect (consp result) :to-be-truthy)
-        (expect (car result) :to-equal "At Risk")
-        (expect (cdr result) :to-be nil)))))
+        ;; Should return list with status and nil for text and updated-at
+        (expect (listp result) :to-be-truthy)
+        (expect (nth 0 result) :to-equal "At Risk")
+        (expect (nth 1 result) :to-be nil)
+        (expect (nth 2 result) :to-be nil)))))
 
 ;;; shortcut-test.el ends here

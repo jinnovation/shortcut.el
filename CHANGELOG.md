@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Epic view Health section now displays "Last Updated" field showing when the health status was last modified
 - New command `shortcut-stories-list-owned-by-me` to list all stories owned by (assigned to) the current user, accessible via `l o` in the main dispatch menu
 - New vtable-based list view for stories requested by current user (accessible via `l s` in transient menu or `M-x shortcut-stories-list-requested-by-me`)
 - Ability to browse epics and stories with support for cache-based completion

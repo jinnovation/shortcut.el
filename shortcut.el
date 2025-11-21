@@ -823,11 +823,12 @@ Returns the epic name as a string, or nil if lookup fails or epic-id is nil."
       (error nil))))
 
 (defun shortcut--epic-health (epic-id)
-  "Get the health status and message for epic with EPIC-ID.
-Returns a cons cell (STATUS . MESSAGE) where:
+  "Get the health status, message, and updated timestamp for epic with EPIC-ID.
+Returns a list (STATUS MESSAGE UPDATED-AT) where:
 - STATUS is a string like \"On Track\", \"At Risk\", \"Off Track\",
   or \"No Health\"
 - MESSAGE is the health text string, or nil if no message
+- UPDATED-AT is the ISO 8601 timestamp string when health was last updated
 Returns nil if epic-id is nil or health information is unavailable."
   (when epic-id
     (condition-case nil
@@ -835,8 +836,9 @@ Returns nil if epic-id is nil or health information is unavailable."
                (health (alist-get 'health epic)))
           (when health
             (let ((status (alist-get 'status health))
-                  (text (alist-get 'text health)))
-              (cons status text))))
+                  (text (alist-get 'text health))
+                  (updated-at (alist-get 'updated_at health)))
+              (list status text updated-at))))
       (error nil))))
 
 (defun shortcut--epics-search (input)
@@ -1798,14 +1800,18 @@ Returns the state as a string, or \"Unknown\" if not found."
         (insert "\n"))
 
       (when-let ((health (shortcut--epic-health id)))
-        (let ((health-status (car health))
-              (health-text (cdr health)))
+        (let ((health-status (nth 0 health))
+              (health-text (nth 1 health))
+              (health-updated-at (nth 2 health)))
           (magit-insert-section (health)
             (magit-insert-heading "Health")
             (shortcut--story-insert-header "Status" health-status
                                            (shortcut--epic-format-health-status health-status))
             (when (and health-text (not (string-empty-p health-text)))
               (shortcut--story-insert-header "Note" health-text))
+            (when health-updated-at
+              (shortcut--story-insert-header "Last Updated"
+                                             (shortcut--format-timestamp health-updated-at)))
             (insert "\n"))))
 
       (shortcut--epic-insert-stats stats)
