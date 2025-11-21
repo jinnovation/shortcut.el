@@ -1008,12 +1008,34 @@ Builds a threaded view based on parent_id relationships."
         (when estimate
           (shortcut--story-insert-header "Estimate" (format "%d points" estimate)))
         (when epic-id
-          (let ((epic-name (shortcut--epic-name epic-id)))
-            (shortcut--story-insert-header "Epic"
-                                           (if epic-name
-                                               (format "sc-%d %s" epic-id epic-name)
-                                             (format "sc-%d" epic-id))
-                                           'shortcut-id)))
+          (insert (propertize (format "%-15s" "Epic:")
+                              'font-lock-face 'shortcut-story-header))
+          (let* ((epic-name (shortcut--epic-name epic-id))
+                 (text (if epic-name
+                           (format "sc-%d %s" epic-id epic-name)
+                         (format "sc-%d" epic-id)))
+                 (start (point)))
+            (insert (propertize text
+                                'font-lock-face 'shortcut-id
+                                'mouse-face 'highlight
+                                'help-echo "Click or press RET to view epic"
+                                'keymap (let ((map (make-sparse-keymap)))
+                                          (define-key map (kbd "RET")
+                                            (lambda ()
+                                              (interactive)
+                                              (shortcut-epic-get epic-id)))
+                                          (define-key map (kbd "<mouse-1>")
+                                            (lambda (event)
+                                              (interactive "e")
+                                              (mouse-set-point event)
+                                              (shortcut-epic-get epic-id)))
+                                          (define-key map (kbd "<mouse-2>")
+                                            (lambda (event)
+                                              (interactive "e")
+                                              (mouse-set-point event)
+                                              (shortcut-epic-get epic-id)))
+                                          map)))
+            (insert "\n")))
         (when iteration-id
           (shortcut--story-insert-header "Iteration" (format "sc-%d" iteration-id) 'shortcut-id))
 

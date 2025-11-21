@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Completed stories in completion candidates are now displayed with strikethrough and grey color
 - Story view now displays followers and requester
 - Story view now displays epic name alongside epic ID (e.g., "sc-12345 Epic Name")
+- Epic field in story view is now interactive - click with mouse or press RET to navigate to the epic's overview
 - Story and epic completion candidates are now sorted by completion status within groups (incomplete first, then completed, with most recent IDs first within each status)
 
 ### Changed
