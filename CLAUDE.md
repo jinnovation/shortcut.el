@@ -22,4 +22,4 @@
 
 - Always check for balanced parentheses with `(progn (check-parens))`
 - Always run checkdoc on the package
-- Byte-compile with: `cask build`
+- Byte-compile with: `cask build`. Run `cask clean-elc` afterwards on successful byte-compilation.
