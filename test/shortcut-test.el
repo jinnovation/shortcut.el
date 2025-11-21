@@ -2,6 +2,12 @@
 ;;; Commentary:
 ;;; Code:
 
+(when (require 'undercover nil t)
+  (undercover "*.el"
+              (:report-file "./coverage/lcov-buttercup.info")
+              (:report-format 'lcov)
+              (:send-report nil)))
+
 (require 'buttercup)
 (require 'shortcut)
 (load (expand-file-name "fixtures.el" (file-name-directory (or load-file-name buffer-file-name))))

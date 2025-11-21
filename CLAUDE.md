@@ -19,4 +19,5 @@
 ## Testing
 
 - Always run pre-commit hooks
+- Run tests: `UNDERCOVER_FORCE=true cask exec buttercup -L . test/`.
 - When adding new fixtures, always base them on the Shortcut API schema and verify conformity.
