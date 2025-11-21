@@ -168,6 +168,26 @@ stale or outdated."
   "Face for comment timestamps."
   :group 'shortcut)
 
+(defface shortcut-epic-health-on-track
+    '((t :inherit success))
+  "Face for epic health status 'On Track'."
+  :group 'shortcut)
+
+(defface shortcut-epic-health-at-risk
+    '((t :inherit warning))
+  "Face for epic health status 'At Risk'."
+  :group 'shortcut)
+
+(defface shortcut-epic-health-off-track
+    '((t :inherit error))
+  "Face for epic health status 'Off Track'."
+  :group 'shortcut)
+
+(defface shortcut-epic-health-none
+    '((t :inherit shortcut-placeholder))
+  "Face for epic health status 'No Health'."
+  :group 'shortcut)
+
 ;;; API Utilities
 
 (defun shortcut--api-request (endpoint &optional method data)
@@ -1088,10 +1108,10 @@ States are grouped by type (Backlog, Unstarted, Started, Done)."
 (defun shortcut--epic-format-health-status (health-status)
   "Return a face for the epic health based on HEALTH-STATUS."
   (pcase health-status
-    ("On Track" 'shortcut-story-state-done)
-    ("At Risk" 'warning)
-    ("Off Track" 'error)
-    ("No Health" 'shortcut-placeholder)
+    ("On Track" 'shortcut-epic-health-on-track)
+    ("At Risk" 'shortcut-epic-health-at-risk)
+    ("Off Track" 'shortcut-epic-health-off-track)
+    ("No Health" 'shortcut-epic-health-none)
     (_ 'default)))
 
 (defun shortcut--story-insert-header (label value &optional face)
