@@ -393,6 +393,26 @@ Returns the updated story."
    "PUT"
    fields))
 
+(defun shortcut--stories-requested-by-current-user ()
+  "Get all story IDs requested by the current user.
+Returns a list of story IDs (as integers).
+Uses the Shortcut Search API with the authenticated user's mention name."
+  (interactive)
+  (let ((mention-name (shortcut--current-user-mention-name)))
+    (unless mention-name
+      (user-error "Could not determine current user's mention name"))
+    (let* ((query (format "requester:%s" mention-name))
+           (results (shortcut--stories-search query))
+           (story-ids '()))
+      ;; Extract story IDs from the search results
+      ;; shortcut--stories-search returns an alist where values are ID strings
+      (dolist (result results)
+        (let ((id-str (cdr result)))
+          (when id-str
+            (push (string-to-number id-str) story-ids))))
+      ;; Return in ascending order (oldest first)
+      (sort story-ids #'<))))
+
 (defun shortcut-member-get (member-id)
   "Get the JSON payload for member with MEMBER-ID.
 Returns the member as an alist parsed from JSON.
@@ -1609,6 +1629,15 @@ Returns the user name as a string, or \"Unknown\" if lookup fails."
   (condition-case nil
       (or (alist-get 'name (shortcut--member-current)) "Unknown")
     (error "Unknown")))
+
+(defun shortcut--current-user-mention-name ()
+  "Get the mention name of the current authenticated user.
+Returns the mention name as a string, or nil if lookup fails.
+The mention name is used in search queries (e.g., requester:username)."
+  (condition-case nil
+      (let* ((member (shortcut--member-current)))
+        (alist-get 'mention_name member))
+    (error nil)))
 
 ;;; Transient Interface
 
