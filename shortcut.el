@@ -642,9 +642,23 @@ If on a widget, activate it.  Otherwise, browse the story URL."
       (widget-button-press (point))
     (shortcut-story-browse-url)))
 
-(defvar shortcut-story-mode-map
+(defvar shortcut-base-map
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "q") 'quit-window)
+    map)
+  "Base keymap for Shortcut modes.")
+
+(define-derived-mode shortcut-base-mode magit-section-mode "Shortcut"
+                     "Base major mode for viewing Shortcut entities.
+
+\\{shortcut-base-map}"
+                     :group 'shortcut
+                     (setq truncate-lines t)
+                     (goto-address-mode +1))
+
+(defvar shortcut-story-mode-map
+  (let ((map (make-sparse-keymap)))
+    (set-keymap-parent map shortcut-base-map)
     (define-key map (kbd "g") 'shortcut-story-refresh)
     (define-key map (kbd "C-c C-o") 'shortcut-story-browse-url)
     (define-key map (kbd "RET") 'shortcut-story-ret)
@@ -703,13 +717,11 @@ Prompts for a new state using completing-read from available workflow states."
          (message "Failed to update story state: %s" (error-message-string err))
          (shortcut-story-refresh))))))
 
-(define-derived-mode shortcut-story-mode magit-section-mode "Shortcut-Story"
+(define-derived-mode shortcut-story-mode shortcut-base-mode "Shortcut-Story"
                      "Major mode for viewing Shortcut stories.
 
 \\{shortcut-story-mode-map}"
                      :group 'shortcut
-                     (setq truncate-lines t)
-                     (goto-address-mode +1)
                      ;; Enable widget minor mode for checkbox interaction
                      (setq-local widget-push-button-prefix "")
                      (setq-local widget-push-button-suffix "")
@@ -1247,7 +1259,7 @@ If on a widget, activate it.  Otherwise, browse the epic URL."
 
 (defvar shortcut-epic-mode-map
   (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "q") 'quit-window)
+    (set-keymap-parent map shortcut-base-map)
     (define-key map (kbd "g") 'shortcut-epic-refresh)
     (define-key map (kbd "C-c C-o") 'shortcut-epic-browse-url)
     (define-key map (kbd "RET") 'shortcut-epic-ret)
@@ -1261,13 +1273,11 @@ If on a widget, activate it.  Otherwise, browse the epic URL."
 (defvar-local shortcut-epic--current-state-id nil
   "The current state ID of the epic displayed in this buffer.")
 
-(define-derived-mode shortcut-epic-mode magit-section-mode "Shortcut-Epic"
+(define-derived-mode shortcut-epic-mode shortcut-base-mode "Shortcut-Epic"
                      "Major mode for viewing Shortcut epics.
 
 \\{shortcut-epic-mode-map}"
-                     :group 'shortcut
-                     (setq truncate-lines t)
-                     (goto-address-mode +1))
+                     :group 'shortcut)
 
 (defun shortcut-epic-refresh ()
   "Refresh the current epic buffer."
