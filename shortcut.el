@@ -229,8 +229,9 @@ Completed stories are displayed with strikethrough and grey color."
 
 (defun shortcut--stories-search (input)
   "Search for stories using the Shortcut Search API with INPUT string.
-Returns an alist where keys are \"ID TITLE\" display strings (with propertized ID)
-and values are story IDs (as strings without \"sc-\" prefix).
+Returns an alist where keys are \"ID TITLE\" display strings
+\(with propertized ID) and values are story IDs (as strings
+without \"sc-\" prefix).
 Caches retrieved stories in `shortcut--story-cache'."
   (condition-case err
       (let* ((query (if (string-empty-p input)
@@ -752,8 +753,9 @@ Returns the epic name as a string, or nil if lookup fails or epic-id is nil."
 
 (defun shortcut--epics-search (input)
   "Search for epics using the Shortcut Search API with INPUT string.
-Returns an alist where keys are \"ID NAME\" display strings (with propertized ID)
-and values are epic IDs (as strings without \"sc-\" prefix).
+Returns an alist where keys are \"ID NAME\" display strings
+\(with propertized ID) and values are epic IDs (as strings
+without \"sc-\" prefix).
 Caches retrieved epics in `shortcut--epic-cache'."
   (condition-case err
       (let* ((query (if (string-empty-p input)

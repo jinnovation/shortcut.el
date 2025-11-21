@@ -6,3 +6,23 @@ repos:
       - id: end-of-file-fixer
       - id: mixed-line-ending
         args: ["--fix=lf"]
+  - repo: local
+    hooks:
+      - id: check-parens
+        name: Check parentheses balance
+        entry: emacs --batch --eval "(progn (find-file \"shortcut.el\") (check-parens))"
+        language: system
+        files: '\.el$'
+        pass_filenames: false
+      - id: checkdoc
+        name: Run checkdoc
+        entry: bash -c 'emacs --batch --eval "(progn (setq checkdoc-autofix-flag '\''never) (checkdoc-file \"shortcut.el\") (when (get-buffer \"*Warnings*\") (with-current-buffer \"*Warnings*\" (message \"%s\" (buffer-string)) (kill-emacs 1))))"'
+        language: system
+        files: '\.el$'
+        pass_filenames: false
+      - id: cask-build
+        name: Byte-compile with cask
+        entry: bash -c 'cask build && cask clean-elc'
+        language: system
+        files: '\.el$'
+        pass_filenames: false
