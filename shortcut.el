@@ -753,17 +753,19 @@ Results are cached in `shortcut--epic-cache'."
           epic))))
 
 (defun shortcut--epic-cache-add (epic)
-  "Add EPIC to the cache, storing its ID, name, and state.
+  "Add EPIC to the cache, storing its ID, name, state, and URL.
 EPIC should be an alist with at least `id' and `name' fields."
   (when-let ((id (alist-get 'id epic))
              (name (alist-get 'name epic)))
     (let ((state (alist-get 'state epic))
-          (owner-ids (alist-get 'owner_ids epic)))
+          (owner-ids (alist-get 'owner_ids epic))
+          (app-url (alist-get 'app_url epic)))
       (puthash (format "%s" id)
                `((id . ,id)
                  (name . ,name)
                  (state . ,state)
-                 (owner_ids . ,owner-ids))
+                 (owner_ids . ,owner-ids)
+                 (app_url . ,app-url))
                shortcut--epic-cache))))
 
 (defun shortcut--epic-cache-candidates ()
