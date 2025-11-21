@@ -20,3 +20,4 @@
 ## Testing
 
 - Always run pre-commit hooks
+- When adding new fixtures, always base them on the Shortcut API schema and verify conformity.

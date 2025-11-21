@@ -142,4 +142,70 @@
         ;; Should return the member-id as a string
         (expect result :to-equal "uuid-member-error")))))
 
+(describe "shortcut--epic-health"
+  (before-each
+    ;; Clear the cache before each test
+    (clrhash shortcut--epic-cache))
+
+  (it "should return health status and message as cons cell"
+    (let ((epic-id 67890))
+      ;; Mock shortcut--epic-get to return fixture with health
+      (spy-on 'shortcut--epic-get
+              :and-return-value shortcut-test-epic-fixture)
+
+      ;; Call the function under test
+      (let ((result (shortcut--epic-health epic-id)))
+        ;; Should return a cons cell (STATUS . MESSAGE)
+        (expect (consp result) :to-be-truthy)
+        (expect (car result) :to-equal "On Track")
+        (expect (cdr result) :to-equal "All tasks on schedule"))))
+
+  (it "should return nil when epic-id is nil"
+    (let ((result (shortcut--epic-health nil)))
+      ;; Should return nil for nil epic-id
+      (expect result :to-be nil)))
+
+  (it "should return nil when health field is missing"
+    (let ((epic-id 99999)
+          (epic-without-health
+           '((id . 99999)
+             (name . "Epic Without Health")
+             (state . "in progress"))))
+      ;; Mock shortcut--epic-get to return epic without health
+      (spy-on 'shortcut--epic-get
+              :and-return-value epic-without-health)
+
+      ;; Call the function under test
+      (let ((result (shortcut--epic-health epic-id)))
+        ;; Should return nil when health field is missing
+        (expect result :to-be nil))))
+
+  (it "should return nil on API error"
+    (let ((epic-id 88888))
+      ;; Mock shortcut--epic-get to throw an error
+      (spy-on 'shortcut--epic-get
+              :and-call-fake (lambda (_) (error "API error")))
+
+      ;; Call the function under test
+      (let ((result (shortcut--epic-health epic-id)))
+        ;; Should return nil on error
+        (expect result :to-be nil))))
+
+  (it "should handle health with status but no text"
+    (let ((epic-id 77777)
+          (epic-with-status-only
+           '((id . 77777)
+             (name . "Epic With Status Only")
+             (health . ((status . "At Risk"))))))
+      ;; Mock shortcut--epic-get to return epic with status but no text
+      (spy-on 'shortcut--epic-get
+              :and-return-value epic-with-status-only)
+
+      ;; Call the function under test
+      (let ((result (shortcut--epic-health epic-id)))
+        ;; Should return cons cell with status and nil for text
+        (expect (consp result) :to-be-truthy)
+        (expect (car result) :to-equal "At Risk")
+        (expect (cdr result) :to-be nil)))))
+
 ;;; shortcut-test.el ends here

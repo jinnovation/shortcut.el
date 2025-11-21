@@ -753,19 +753,21 @@ Results are cached in `shortcut--epic-cache'."
           epic))))
 
 (defun shortcut--epic-cache-add (epic)
-  "Add EPIC to the cache, storing its ID, name, state, and URL.
+  "Add EPIC to the cache, storing its ID, name, state, URL, and health.
 EPIC should be an alist with at least `id' and `name' fields."
   (when-let ((id (alist-get 'id epic))
              (name (alist-get 'name epic)))
     (let ((state (alist-get 'state epic))
           (owner-ids (alist-get 'owner_ids epic))
-          (app-url (alist-get 'app_url epic)))
+          (app-url (alist-get 'app_url epic))
+          (health (alist-get 'health epic)))
       (puthash (format "%s" id)
                `((id . ,id)
                  (name . ,name)
                  (state . ,state)
                  (owner_ids . ,owner-ids)
-                 (app_url . ,app-url))
+                 (app_url . ,app-url)
+                 (health . ,health))
                shortcut--epic-cache))))
 
 (defun shortcut--epic-cache-candidates ()
@@ -795,6 +797,23 @@ Returns the epic name as a string, or nil if lookup fails or epic-id is nil."
     (condition-case nil
         (let ((epic (shortcut--epic-get epic-id)))
           (alist-get 'name epic))
+      (error nil))))
+
+(defun shortcut--epic-health (epic-id)
+  "Get the health status and message for epic with EPIC-ID.
+Returns a cons cell (STATUS . MESSAGE) where:
+- STATUS is a string like \"On Track\", \"At Risk\", \"Off Track\",
+  or \"No Health\"
+- MESSAGE is the health text string, or nil if no message
+Returns nil if epic-id is nil or health information is unavailable."
+  (when epic-id
+    (condition-case nil
+        (let* ((epic (shortcut--epic-get epic-id))
+               (health (alist-get 'health epic)))
+          (when health
+            (let ((status (alist-get 'status health))
+                  (text (alist-get 'text health)))
+              (cons status text))))
       (error nil))))
 
 (defun shortcut--epics-search (input)
@@ -1062,6 +1081,15 @@ States are grouped by type (Backlog, Unstarted, Started, Done)."
     ((or "done" "completed" "deployed") 'shortcut-story-state-done)
     ((or "blocked" "on hold") 'shortcut-story-state-blocked)
     (_ 'shortcut-story-state-started)))
+
+(defun shortcut--epic-format-health-status (health-status)
+  "Return a face for the epic health based on HEALTH-STATUS."
+  (pcase health-status
+    ("On Track" 'shortcut-story-state-done)
+    ("At Risk" 'warning)
+    ("Off Track" 'error)
+    ("No Health" 'shortcut-placeholder)
+    (_ 'default)))
 
 (defun shortcut--story-insert-header (label value &optional face)
   "Insert a header line with LABEL and VALUE.
@@ -1704,6 +1732,14 @@ Returns the state as a string, or \"Unknown\" if not found."
 
         (shortcut--story-insert-header "State" state
                                        (shortcut--story-format-state state))
+
+        (when-let ((health (shortcut--epic-health id)))
+          (let ((health-status (car health))
+                (health-text (cdr health)))
+            (shortcut--story-insert-header "Health" health-status
+                                           (shortcut--epic-format-health-status health-status))
+            (when (and health-text (not (string-empty-p health-text)))
+              (shortcut--story-insert-header "Health Note" health-text))))
 
         (when owner-ids
           (shortcut--story-insert-header "Owners"
