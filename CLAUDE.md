@@ -1,5 +1,4 @@
 - Shortcut REST API docs: https://developer.shortcut.com/api/rest/v3
-- OpenAPI API specification: https://developer.shortcut.com/api/rest/v3/shortcut.openapi.json
 - Usage examples for the REST API in other languages can be found here:
   https://github.com/useshortcut/api-cookbook
 - When adding new user-facing functionality, add a new corresponding record to CHANGELOG.md
