@@ -868,6 +868,68 @@ If there are no tasks, shows a placeholder."
       (insert (propertize "empty" 'font-lock-face 'shortcut-placeholder))
       (insert "\n\n"))))
 
+(defun shortcut--story-link-invert-verb (verb)
+  "Invert the relationship VERB for story links.
+When the current story is the subject, we need to invert the verb.
+For example: 'blocks' becomes 'blocked by', 'relates to' stays 'relates to'."
+  (pcase verb
+    ("blocks" "blocked by")
+    ("duplicates" "duplicated by")
+    ("relates to" "relates to")
+    (_ verb)))
+
+(defun shortcut--story-insert-links (story-links)
+  "Insert STORY-LINKS showing relationships between stories.
+If there are no story links, shows a placeholder."
+  (magit-insert-section (story-links)
+    (magit-insert-heading "Story Links")
+    (if (and story-links (> (length story-links) 0))
+        (progn
+          (seq-doseq (link story-links)
+            (let* ((subject-id (alist-get 'subject_id link))
+                   (object-id (alist-get 'object_id link))
+                   (verb (alist-get 'verb link))
+                   ;; Determine which story ID to display and whether to invert verb
+                   (is-subject (= subject-id shortcut-story--current-id))
+                   (linked-id (if is-subject object-id subject-id))
+                   (display-verb (if (not is-subject)
+                                     (shortcut--story-link-invert-verb verb)
+                                   verb))
+                   ;; Get the linked story from cache if available
+                   (linked-story (gethash (format "%s" linked-id) shortcut--story-cache))
+                   (linked-name (when linked-story (alist-get 'name linked-story)))
+                   (display-text (if linked-name
+                                     (format "sc-%d %s" linked-id linked-name)
+                                   (format "sc-%d" linked-id))))
+              (insert "  ")
+              (insert (propertize display-verb 'font-lock-face 'font-lock-keyword-face))
+              (insert " ")
+              ;; Make the story link clickable
+              (insert (propertize display-text
+                                  'font-lock-face 'shortcut-id
+                                  'mouse-face 'highlight
+                                  'help-echo "Click or press RET to view story"
+                                  'keymap (let ((map (make-sparse-keymap)))
+                                            (define-key map (kbd "RET")
+                                              (lambda ()
+                                                (interactive)
+                                                (shortcut-story-get linked-id)))
+                                            (define-key map (kbd "<mouse-1>")
+                                              (lambda (event)
+                                                (interactive "e")
+                                                (mouse-set-point event)
+                                                (shortcut-story-get linked-id)))
+                                            (define-key map (kbd "<mouse-2>")
+                                              (lambda (event)
+                                                (interactive "e")
+                                                (mouse-set-point event)
+                                                (shortcut-story-get linked-id)))
+                                            map)))
+              (insert "\n")))
+          (insert "\n"))
+      (insert (propertize "empty" 'font-lock-face 'shortcut-placeholder))
+      (insert "\n\n"))))
+
 (defun shortcut--fontify-markdown (text)
   "Fontify TEXT as markdown and return it as a string with text properties.
 Similar to Forge's markdown fontification."
@@ -997,6 +1059,7 @@ If there are no comments, shows a placeholder."
            (completed-at (alist-get 'completed_at story))
            (description (alist-get 'description story))
            (tasks (alist-get 'tasks story))
+           (story-links (alist-get 'story_links story))
            (comments (alist-get 'comments story))
            (app-url (alist-get 'app_url story)))
 
@@ -1083,6 +1146,7 @@ If there are no comments, shows a placeholder."
         (insert "\n"))
 
       (shortcut--story-insert-tasks tasks)
+      (shortcut--story-insert-links story-links)
       (shortcut--story-insert-description description)
       (shortcut--story-insert-comments comments))))
 
