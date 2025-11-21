@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- New vtable-based list view for stories requested by current user (accessible via `l s` in transient menu or `M-x shortcut-stories-list-requested-by-me`)
 - Ability to browse epics and stories with support for cache-based completion
 - Ability to update the status of stories from the story view buffer
 - Ability to pre-populate the story and epic cache via the Shortcut Search API
@@ -22,5 +23,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Minimum Emacs version requirement bumped from 27.1 to 28.1
+- Minimum Emacs version requirement bumped from 28.1 to 29.1 (required for vtable support)
 - Minimum magit-section version requirement bumped from 3.3.0 to 4.0.0

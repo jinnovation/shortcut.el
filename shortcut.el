@@ -5,7 +5,7 @@
 ;; Author: Jonathan Jin <me@jonathanj.in>
 ;; URL: https://github.com/jinnovation/shortcut.el
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "28.1") (transient "0.3.0") (magit-section "4.0.0"))
+;; Package-Requires: ((emacs "29.1") (transient "0.3.0") (magit-section "4.0.0"))
 ;; Keywords: tools, convenience, project, project-management
 
 ;; This file is not part of GNU Emacs.
@@ -36,6 +36,7 @@
 (require 'transient)
 (require 'magit-section)
 (require 'wid-edit)
+(require 'vtable)
 
 (defgroup shortcut nil
   "Emacs integration for Shortcut project management."
@@ -412,6 +413,118 @@ Uses the Shortcut Search API with the authenticated user's mention name."
             (push (string-to-number id-str) story-ids))))
       ;; Return in ascending order (oldest first)
       (sort story-ids #'<))))
+
+;;; Stories List Mode
+
+(defvar-local shortcut-stories-list--vtable nil
+  "The vtable object for the stories list buffer.")
+
+(defun shortcut-stories-list-open-story ()
+  "Open the story at point in a detail view."
+  (interactive)
+  (when-let* ((row-data (vtable-current-object))
+              (story-id (alist-get 'id row-data)))
+    (shortcut-story-get story-id)))
+
+(defun shortcut-stories-list-open-story-at-mouse (event)
+  "Open the story at mouse EVENT in a detail view."
+  (interactive "e")
+  (mouse-set-point event)
+  (shortcut-stories-list-open-story))
+
+(defun shortcut-stories-list-refresh ()
+  "Refresh the stories list."
+  (interactive)
+  (when (derived-mode-p 'shortcut-stories-list-mode)
+    (shortcut-stories-list-requested-by-me)))
+
+(defvar-keymap shortcut-stories-list-mode-map
+  :parent special-mode-map
+  :doc "Keymap for `shortcut-stories-list-mode'."
+  "RET" #'shortcut-stories-list-open-story
+  "<mouse-1>" #'shortcut-stories-list-open-story-at-mouse
+  "g" #'shortcut-stories-list-refresh)
+
+(define-derived-mode shortcut-stories-list-mode special-mode "Shortcut-Stories-List"
+                     "Major mode for listing Shortcut stories.
+
+\\{shortcut-stories-list-mode-map}"
+                     :group 'shortcut
+                     (setq truncate-lines t))
+
+(defun shortcut-stories-list-requested-by-me ()
+  "Display a list of stories requested by the current user.
+Uses vtable to show story ID, title, state, epic, and owner."
+  (interactive)
+  (message "Fetching stories requested by you...")
+  (let* ((story-ids (shortcut--stories-requested-by-current-user))
+         (stories '()))
+    ;; Fetch story data for each ID (uses cache when available)
+    (dolist (story-id story-ids)
+      (condition-case err
+          (let ((story (shortcut--story-get story-id)))
+            (push story stories))
+        (error
+         (message "Failed to fetch story %s: %s" story-id (error-message-string err)))))
+    ;; Reverse to get chronological order (oldest first)
+    (setq stories (nreverse stories))
+    ;; Create or switch to buffer
+    (let ((buffer (get-buffer-create "*Shortcut Stories: Requested by Me*")))
+      (with-current-buffer buffer
+        (let ((inhibit-read-only t))
+          (erase-buffer)
+          (shortcut-stories-list-mode)
+          ;; Create vtable
+          (setq shortcut-stories-list--vtable
+                (make-vtable
+                 :columns
+                 '((:name "ID"
+                    :width 10
+                    :getter (lambda (story _index)
+                              (propertize (format "sc-%d" (alist-get 'id story))
+                                          'face 'shortcut-id)))
+                   (:name "Title"
+                    :width 50
+                    :getter (lambda (story _index)
+                              (let* ((name (alist-get 'name story))
+                                     (completed (alist-get 'completed story)))
+                                (if (and completed (not (eq completed :json-false)))
+                                    (propertize name
+                                                'face '(:strike-through t :foreground "grey"))
+                                  name))))
+                   (:name "State"
+                    :width 15
+                    :getter (lambda (story _index)
+                              (let* ((workflow-id (alist-get 'workflow_id story))
+                                     (state-id (alist-get 'workflow_state_id story))
+                                     (state-name (if (and workflow-id state-id)
+                                                     (shortcut--workflow-state-name workflow-id state-id)
+                                                   "Unknown")))
+                                (propertize state-name
+                                            'face (shortcut--story-format-state state-name)))))
+                   (:name "Epic"
+                    :width 30
+                    :getter (lambda (story _index)
+                              (let ((epic-id (alist-get 'epic_id story)))
+                                (if epic-id
+                                    (or (shortcut--epic-name epic-id)
+                                        (format "sc-%d" epic-id))
+                                  ""))))
+                   (:name "Owner"
+                    :width 20
+                    :getter (lambda (story _index)
+                              (let ((owner-ids (alist-get 'owner_ids story)))
+                                (if (and owner-ids (> (length owner-ids) 0))
+                                    (shortcut--member-name (aref owner-ids 0))
+                                  "")))))
+                 :objects stories
+                 :actions '("RET" shortcut-stories-list-open-story
+                            "<mouse-1>" shortcut-stories-list-open-story-at-mouse)))
+          (goto-char (point-min)))
+        (display-buffer buffer)
+        (message "Found %d story%s requested by you"
+                 (length stories)
+                 (if (= (length stories) 1) "" "s"))))))
 
 (defun shortcut-member-get (member-id)
   "Get the JSON payload for member with MEMBER-ID.
@@ -1685,7 +1798,7 @@ Results are added to the story cache for faster completion."
     ("v s" "story" shortcut-story-get)
     ("v e" "epic" shortcut-epic-get)]
    ["List"
-    ("l s" "stories" shortcut-story-list :transient nil :inapt-if (lambda () t))
+    ("l s" "stories requested by me" shortcut-stories-list-requested-by-me)
     ("l e" "epics" shortcut-epic-list :transient nil :inapt-if (lambda () t))]
    ["Create"
     ("c s" "story" shortcut-story-create :transient nil :inapt-if (lambda () t))
