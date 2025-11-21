@@ -80,6 +80,10 @@ Keys are story IDs (as strings), values are alists with at least `name' field.")
   "Cache for epic information.
 Keys are epic IDs (as strings), values are epic objects.")
 
+(defvar shortcut--group-cache (make-hash-table :test 'equal)
+  "Cache for group/team information.
+Keys are group IDs (as strings), values are group objects.")
+
 (defun shortcut--clear-story-cache ()
   "Clear the story cache.
 This is useful when cached story information becomes stale or outdated."
@@ -432,6 +436,25 @@ Returns a vector of state objects, each with `id' and `name' fields."
   (let* ((workflow (shortcut--workflow-get workflow-id))
          (states (alist-get 'states workflow)))
     (or states [])))
+
+(defun shortcut--group-get (group-id)
+  "Get the JSON payload for group/team with GROUP-ID.
+Returns the group as an alist parsed from JSON.
+Results are cached in `shortcut--group-cache'."
+  (let ((group-id-str (format "%s" group-id)))
+    (or (gethash group-id-str shortcut--group-cache)
+        (let ((group (shortcut--api-request (format "/groups/%s" group-id-str))))
+          (puthash group-id-str group shortcut--group-cache)
+          group))))
+
+(defun shortcut--group-name (group-id)
+  "Get the name of the group/team with GROUP-ID.
+Returns the group name as a string, or nil if lookup fails or group-id is nil."
+  (when group-id
+    (condition-case nil
+        (let ((group (shortcut--group-get group-id)))
+          (alist-get 'name group))
+      (error nil))))
 
 (defun shortcut--epic-get (epic-id)
   "Get the JSON payload for epic with EPIC-ID.
@@ -1063,6 +1086,7 @@ If there are no comments, shows a placeholder."
            (estimate (alist-get 'estimate story))
            (epic-id (alist-get 'epic_id story))
            (iteration-id (alist-get 'iteration_id story))
+           (group-id (alist-get 'group_id story))
            (deadline (alist-get 'deadline story))
            (created-at (alist-get 'created_at story))
            (updated-at (alist-get 'updated_at story))
@@ -1089,6 +1113,10 @@ If there are no comments, shows a placeholder."
         (shortcut--story-insert-header "Type" (upcase story-type))
         (shortcut--story-insert-header "State" workflow-state-name
                                        (shortcut--story-format-state workflow-state-name))
+        (when group-id
+          (let ((team-name (shortcut--group-name group-id)))
+            (when team-name
+              (shortcut--story-insert-header "Team" team-name))))
         (when estimate
           (shortcut--story-insert-header "Estimate" (format "%d points" estimate)))
         (when epic-id
