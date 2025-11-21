@@ -80,6 +80,8 @@ Keys are story IDs (as strings), values are alists with at least 'name field.")
 Keys are epic IDs (as strings), values are epic objects.")
 
 (defun shortcut--clear-story-cache ()
+  "Clear the story cache.
+This is useful when cached story information becomes stale or outdated."
   (interactive)
   (setq shortcut--story-cache (make-hash-table :test 'equal)))
 
@@ -169,7 +171,7 @@ METHOD defaults to GET.  Returns the parsed JSON response."
 ;;; Member Functions
 
 (defun shortcut--story-cache-add (story)
-  "Add STORY to the cache, storing its ID, name, epic, author, and completion status.
+  "Add STORY to the cache, storing its ID, name, epic, author, and completion.
 STORY should be an alist with at least 'id and 'name fields."
   (when-let ((id (alist-get 'id story))
              (name (alist-get 'name story)))
@@ -187,7 +189,7 @@ STORY should be an alist with at least 'id and 'name fields."
                shortcut--story-cache))))
 
 (defun shortcut--story-cache-candidates ()
-  "Get a list of story candidates from cache for completing-read.
+  "Get a list of story candidates from cache for `completing-read'.
 Returns an alist where keys are 'ID TITLE' strings for matching,
 and values are the story IDs (as strings without 'sc-' prefix).
 Completed stories are displayed with strikethrough and grey color."
@@ -290,8 +292,8 @@ Completed stories are displayed with strikethrough and grey color."
 
 (defun shortcut--story-display-sort-function (candidates)
   "Sort story CANDIDATES within groups by completion status.
-Candidates are in 'ID NAME' format. Sorts with incomplete stories first,
-then completed stories. Within each completion status, sorts by ID descending."
+Candidates are in 'ID NAME' format.  Sorts with incomplete stories first,
+then completed stories.  Within each completion status, sorts by ID descending."
   (sort candidates
         (lambda (a b)
           ;; Extract ID from "ID NAME" format
@@ -455,7 +457,7 @@ EPIC should be an alist with at least 'id and 'name fields."
                shortcut--epic-cache))))
 
 (defun shortcut--epic-cache-candidates ()
-  "Get a list of epic candidates from cache for completing-read.
+  "Get a list of epic candidates from cache for `completing-read'.
 Returns an alist where keys are 'ID NAME' strings for matching,
 and values are the epic IDs (as strings without 'sc-' prefix)."
   (let ((candidates '()))
@@ -546,7 +548,7 @@ Returns a merged alist sorted by ID (most recent first)."
 
 (defun shortcut--epic-display-sort-function (candidates)
   "Sort epic CANDIDATES within groups by ID in descending order.
-Candidates are in 'ID NAME' format. Sorts by epic ID (most recent first)."
+Candidates are in 'ID NAME' format.  Sorts by epic ID (most recent first)."
   (sort candidates
         (lambda (a b)
           ;; Extract ID from "ID NAME" format
@@ -616,8 +618,8 @@ Returns an annotation string with state and owner."
 (defun shortcut--epic-group-function (candidate transform)
   "Group function for epic completion.
 CANDIDATE is a display key string in format 'ID NAME'.
-TRANSFORM is either nil (return group title) or non-nil (return transformed candidate).
-Groups epics by their state."
+TRANSFORM is either nil (return group title) or non-nil (return transformed
+candidate).  Groups epics by their state."
   (if transform
       ;; When TRANSFORM is non-nil, return the candidate as-is
       candidate
@@ -678,7 +680,7 @@ If on a widget, activate it.  Otherwise, browse the story URL."
 
 (defun shortcut-story-set-state ()
   "Change the workflow state of the current story.
-Prompts for a new state using completing-read from available workflow states."
+Prompts for a new state using `completing-read' from available workflow states."
   (interactive)
   (unless shortcut-story--current-id
     (user-error "No story loaded in current buffer"))
@@ -1164,8 +1166,9 @@ If there are no comments, shows a placeholder."
 
 (defun shortcut--story-affixation-function (candidates)
   "Affixation function for story completion.
-CANDIDATES is a list of display keys from the alist (strings in format 'ID TITLE').
-Returns a list of (candidate prefix suffix) for each candidate, adding 'sc-' prefix."
+CANDIDATES is a list of display keys from the alist (strings in format
+\\'ID TITLE\\').  Returns a list of (candidate prefix suffix) for each
+candidate, adding \\'sc-\\' prefix."
   (mapcar (lambda (candidate)
             (list candidate
                   (propertize "sc-" 'face 'shortcut-id)
@@ -1204,8 +1207,9 @@ Returns an annotation string with epic name and author."
 (defun shortcut--story-group-function (candidate transform)
   "Group function for story completion.
 CANDIDATE is a display key string in format 'ID TITLE'.
-TRANSFORM is either nil (return group title) or non-nil (return transformed candidate).
-Groups stories by their epic name, with stories without epics in 'No Epic' group."
+TRANSFORM is either nil (return group title) or non-nil (return transformed
+candidate).  Groups stories by their epic name, with stories without epics
+in 'No Epic' group."
   (if transform
       ;; When TRANSFORM is non-nil, return the candidate as-is
       candidate
@@ -1225,7 +1229,7 @@ Groups stories by their epic name, with stories without epics in 'No Epic' group
 
 (defun shortcut-story-get (story-id)
   "Interactively get and display a Shortcut story by STORY-ID.
-When called interactively, prompts for the story ID using completing-read.
+When called interactively, prompts for the story ID using `completing-read'.
 Supports dynamic searching - type to search for stories via the API,
 or select from cached stories."
   (interactive
@@ -1455,7 +1459,7 @@ Returns the state as a string, or \"Unknown\" if not found."
 
 (defun shortcut-epic-get (epic-id)
   "Interactively get and display a Shortcut epic by EPIC-ID.
-When called interactively, prompts for the epic ID using completing-read.
+When called interactively, prompts for the epic ID using `completing-read'.
 Supports dynamic searching - type to search for epics via the API,
 or select from cached epics."
   (interactive
