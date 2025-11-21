@@ -829,40 +829,44 @@ If DESCRIPTION is empty, shows a placeholder."
       (insert "\n\n"))))
 
 (defun shortcut--story-insert-tasks (tasks)
-  "Insert TASKS as a checklist using Emacs checkbox widgets."
-  (when (and tasks (> (length tasks) 0))
-    (magit-insert-section (tasks)
-      (magit-insert-heading "Tasks")
-      (seq-doseq (task tasks)
-        (let* ((complete (not (eq :json-false (alist-get 'complete task))))
-               (description (alist-get 'description task))
-               (task-id (alist-get 'id task)))
-          (insert "  ")
-          (let ((widget-start (point)))
-            (widget-create 'checkbox
-                           :value complete
-                           :notify (lambda (widget &rest _)
-                                     (let ((new-value (widget-value widget)))
-                                       (condition-case err
-                                           (progn
-                                             (message "Updating task...")
-                                             (shortcut--story-task-update
-                                              shortcut-story--current-id
-                                              task-id
-                                              new-value)
-                                             (shortcut-story-refresh)
-                                             (message "Task updated successfully"))
-                                         (error
-                                          (message "Failed to update task: %s" (error-message-string err))
-                                          (shortcut-story-refresh)))))))
-          (insert " ")
-          (let ((formatted-desc (shortcut--fontify-markdown description)))
-            (if complete
-                (insert (propertize formatted-desc 'font-lock-face 'shortcut-placeholder))
-              (insert formatted-desc)))
-          (insert "\n")))
-      (insert "\n")
-      (widget-setup))))
+  "Insert TASKS as a checklist using Emacs checkbox widgets.
+If there are no tasks, shows a placeholder."
+  (magit-insert-section (tasks)
+    (magit-insert-heading "Tasks")
+    (if (and tasks (> (length tasks) 0))
+        (progn
+          (seq-doseq (task tasks)
+            (let* ((complete (not (eq :json-false (alist-get 'complete task))))
+                   (description (alist-get 'description task))
+                   (task-id (alist-get 'id task)))
+              (insert "  ")
+              (let ((widget-start (point)))
+                (widget-create 'checkbox
+                               :value complete
+                               :notify (lambda (widget &rest _)
+                                         (let ((new-value (widget-value widget)))
+                                           (condition-case err
+                                               (progn
+                                                 (message "Updating task...")
+                                                 (shortcut--story-task-update
+                                                  shortcut-story--current-id
+                                                  task-id
+                                                  new-value)
+                                                 (shortcut-story-refresh)
+                                                 (message "Task updated successfully"))
+                                             (error
+                                              (message "Failed to update task: %s" (error-message-string err))
+                                              (shortcut-story-refresh)))))))
+              (insert " ")
+              (let ((formatted-desc (shortcut--fontify-markdown description)))
+                (if complete
+                    (insert (propertize formatted-desc 'font-lock-face 'shortcut-placeholder))
+                  (insert formatted-desc)))
+              (insert "\n")))
+          (insert "\n")
+          (widget-setup))
+      (insert (propertize "empty" 'font-lock-face 'shortcut-placeholder))
+      (insert "\n\n"))))
 
 (defun shortcut--fontify-markdown (text)
   "Fontify TEXT as markdown and return it as a string with text properties.
