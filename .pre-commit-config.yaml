@@ -26,3 +26,10 @@ repos:
         language: system
         files: '\.el$'
         pass_filenames: false
+      - id: package-lint
+        name: package-lint
+        entry: cask emacs -batch --eval "(setq package-lint-batch-fail-on-warnings t)" -f package-lint-batch-and-exit shortcut.el
+        language: system
+        language: system
+        files: '\.el$'
+        pass_filenames: false
