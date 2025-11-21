@@ -7,11 +7,17 @@ Emacs-native package for [Shortcut](https://www.shortcut.com), the project manag
 
 ## Features
 
-- **Story browsing**: View stories with full details including description, tasks, comments, and
-  metadata
-- **Native completion**: Search and filter stories by ID or title via `completing-read`-compatible
-  interface
-- **State management**: Change story workflow states directly from Emacs
+- **Rich story & epic views**: Browse stories and epics with comprehensive details including
+  descriptions, tasks, comments, relationships, health status, and metadata—all in native Emacs
+  buffers using magit-section
+- **Interactive task management**: Toggle task completion directly in story views with real-time API
+  updates and visual feedback
+- **Workflow state updates**: Change story states interactively with completion-based selection of
+  available workflow states
+- **Smart completion & search**: Find stories and epics via `completing-read` with dynamic API
+  search, intelligent caching, and visual indicators for completed items
+- **List views & filtering**: Browse all stories requested by or assigned to you in sortable,
+  interactive vtable-based list views
 
 ## Acknowledgments
 
