@@ -84,6 +84,11 @@ Keys are epic IDs (as strings), values are epic objects.")
   "Cache for group/team information.
 Keys are group IDs (as strings), values are group objects.")
 
+(defvar shortcut--workflow-state-cache (make-hash-table :test 'equal)
+  "Cache for workflow state information including type.
+Keys are \"workflow-id:state-id\" strings, values are state objects with
+name, id, and type.")
+
 (defun shortcut--clear-story-cache ()
   "Clear the story cache.
 This is useful when cached story information becomes stale or outdated."
@@ -432,10 +437,84 @@ Returns the state name as a string, or \"Unknown\" if lookup fails."
 
 (defun shortcut--workflow-states-get (workflow-id)
   "Get all workflow states for WORKFLOW-ID.
-Returns a vector of state objects, each with `id' and `name' fields."
+Returns a vector of state objects, each with `id', `name', and `type' fields.
+Also caches each state in `shortcut--workflow-state-cache'."
   (let* ((workflow (shortcut--workflow-get workflow-id))
          (states (alist-get 'states workflow)))
+    ;; Cache each state with its type information
+    (when states
+      (seq-doseq (state states)
+        (let* ((state-id (alist-get 'id state))
+               (cache-key (format "%s:%s" workflow-id state-id)))
+          (puthash cache-key state shortcut--workflow-state-cache))))
     (or states [])))
+
+(defun shortcut--workflow-state-type-display (state-type)
+  "Get a display name for STATE-TYPE.
+Capitalizes the type name for display in completion groups."
+  (capitalize (or state-type "Unknown")))
+
+(defun shortcut--workflow-state-group-function (workflow-id)
+  "Create a group function for workflow states in WORKFLOW-ID.
+Returns a function suitable for use as completion metadata group-function."
+  (lambda (candidate transform)
+    "Group function for workflow state completion.
+CANDIDATE is a state name string.
+TRANSFORM is either nil (return group title) or non-nil (return transformed
+candidate)."
+    (if transform
+        ;; When TRANSFORM is non-nil, return the candidate as-is
+        candidate
+      ;; When TRANSFORM is nil, return the group title for this candidate
+      (let* ((states (shortcut--workflow-states-get workflow-id))
+             (state (seq-find (lambda (s)
+                                (string= (substring-no-properties candidate)
+                                         (alist-get 'name s)))
+                              states))
+             (state-type (when state (alist-get 'type state)))
+             (group-name (shortcut--workflow-state-type-display state-type)))
+        group-name))))
+
+(defun shortcut--workflow-state-annotation-function (workflow-id)
+  "Create an annotation function for workflow states in WORKFLOW-ID.
+Returns a function suitable for use as completion metadata annotation-function."
+  (lambda (candidate)
+    "Annotation function for workflow state completion.
+CANDIDATE is a state name string."
+    (let* ((states (shortcut--workflow-states-get workflow-id))
+           (state (seq-find (lambda (s)
+                              (string= (substring-no-properties candidate)
+                                       (alist-get 'name s)))
+                            states))
+           (state-type (when state (alist-get 'type state))))
+      (when state-type
+        (concat (propertize " " 'display '(space :align-to center))
+                (propertize (format "[%s]" state-type)
+                            'face 'font-lock-comment-face))))))
+
+(defun shortcut--workflow-state-completion-table (workflow-id)
+  "Create a completion table for workflow states in WORKFLOW-ID.
+Returns a function suitable for use with `completing-read'."
+  (lambda (string predicate action)
+    (let ((states (shortcut--workflow-states-get workflow-id)))
+      (pcase action
+        ('metadata
+         `(metadata
+           (category . shortcut-workflow-state)
+           (group-function . ,(shortcut--workflow-state-group-function workflow-id))
+           (annotation-function . ,(shortcut--workflow-state-annotation-function workflow-id))))
+        ('lambda
+            ;; Test if STRING is a valid completion
+            (let ((candidates (mapcar (lambda (state) (alist-get 'name state)) states)))
+              (test-completion string candidates predicate)))
+        ('t
+         ;; Return all completions matching STRING
+         (let ((candidates (mapcar (lambda (state) (alist-get 'name state)) states)))
+           (all-completions string candidates predicate)))
+        (_
+         ;; Default: try-completion
+         (let ((candidates (mapcar (lambda (state) (alist-get 'name state)) states)))
+           (try-completion string candidates predicate)))))))
 
 (defun shortcut--group-get (group-id)
   "Get the JSON payload for group/team with GROUP-ID.
@@ -700,7 +779,8 @@ If on a widget, activate it.  Otherwise, browse the story URL."
 
 (defun shortcut-story-set-state ()
   "Change the workflow state of the current story.
-Prompts for a new state using `completing-read' from available workflow states."
+Prompts for a new state using `completing-read' from available workflow states.
+States are grouped by type (Backlog, Unstarted, Started, Done)."
   (interactive)
   (unless shortcut-story--current-id
     (user-error "No story loaded in current buffer"))
@@ -712,20 +792,18 @@ Prompts for a new state using `completing-read' from available workflow states."
                                (shortcut--workflow-state-name
                                 shortcut-story--current-workflow-id
                                 shortcut-story--current-workflow-state-id)))
-         ;; Create alist with propertized state names for display
-         (state-alist (mapcar (lambda (state)
-                                (let ((name (alist-get 'name state)))
-                                  (cons (propertize name 'face (shortcut--story-format-state name))
-                                        (alist-get 'id state))))
-                              states))
          (prompt (if current-state-name
                      (format "Set state (current: %s): " current-state-name)
                    "Set state: "))
-         (selected-name (completing-read prompt state-alist nil t))
-         ;; Strip text properties from selected name to match original string
-         (selected-id (alist-get selected-name state-alist nil nil
-                                 (lambda (a b) (string= (substring-no-properties a)
-                                                        (substring-no-properties b))))))
+         ;; Use completion table with grouping support
+         (completion-table (shortcut--workflow-state-completion-table shortcut-story--current-workflow-id))
+         (selected-name (completing-read prompt completion-table nil t))
+         ;; Find the state ID by matching the name
+         (selected-state (seq-find (lambda (state)
+                                     (string= (substring-no-properties selected-name)
+                                              (alist-get 'name state)))
+                                   states))
+         (selected-id (when selected-state (alist-get 'id selected-state))))
 
     (when selected-id
       (condition-case err
