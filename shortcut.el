@@ -409,15 +409,15 @@ Returns the updated story."
    "PUT"
    fields))
 
-(defun shortcut--stories-requested-by-current-user ()
-  "Get all story IDs requested by the current user.
+(defun shortcut--stories-by-current-user-field (field)
+  "Get all story IDs where current user matches FIELD.
+FIELD should be \"requester\" or \"owner\".
 Returns a list of story IDs (as integers).
 Uses the Shortcut Search API with the authenticated user's mention name."
-  (interactive)
   (let ((mention-name (shortcut--current-user-mention-name)))
     (unless mention-name
       (user-error "Could not determine current user's mention name"))
-    (let* ((query (format "requester:%s" mention-name))
+    (let* ((query (format "%s:%s" field mention-name))
            (results (shortcut--stories-search query))
            (story-ids '()))
       ;; Extract story IDs from the search results
@@ -433,6 +433,14 @@ Uses the Shortcut Search API with the authenticated user's mention name."
 
 (defvar-local shortcut-stories-list--vtable nil
   "The vtable object for the stories list buffer.")
+
+(defvar-local shortcut-stories-list--query-field nil
+  "The query field for this stories list buffer.
+Can be \"requester\" or \"owner\".")
+
+(defvar-local shortcut-stories-list--display-name nil
+  "The display name for this stories list buffer.
+E.g., \"Requested by Me\" or \"Owned by Me\".")
 
 (defun shortcut--vtable-get-id (story _index)
   "Get formatted ID for STORY."
@@ -498,7 +506,12 @@ Uses the Shortcut Search API with the authenticated user's mention name."
   "Refresh the stories list."
   (interactive)
   (when (derived-mode-p 'shortcut-stories-list-mode)
-    (shortcut-stories-list-requested-by-me)))
+    (if (and shortcut-stories-list--query-field
+             shortcut-stories-list--display-name)
+        (shortcut--stories-list-display
+         shortcut-stories-list--query-field
+         shortcut-stories-list--display-name)
+      (user-error "Cannot refresh: unknown query type"))))
 
 (defvar-keymap shortcut-stories-list-mode-map
   :parent special-mode-map
@@ -514,12 +527,12 @@ Uses the Shortcut Search API with the authenticated user's mention name."
                      :group 'shortcut
                      (setq truncate-lines t))
 
-(defun shortcut-stories-list-requested-by-me ()
-  "Display a list of stories requested by the current user.
-Uses vtable to show story ID, title, state, epic, and owner."
-  (interactive)
-  (message "Fetching stories requested by you...")
-  (let* ((story-ids (shortcut--stories-requested-by-current-user))
+(defun shortcut--stories-list-display (field display-name)
+  "Display stories where current user matches FIELD.
+FIELD should be \"requester\" or \"owner\".
+DISPLAY-NAME is used for buffer name and messages (e.g., \"Requested by Me\")."
+  (message "Fetching stories %s..." (downcase display-name))
+  (let* ((story-ids (shortcut--stories-by-current-user-field field))
          (stories '()))
     ;; Fetch story data for each ID (uses cache when available)
     (dolist (story-id story-ids)
@@ -531,11 +544,14 @@ Uses vtable to show story ID, title, state, epic, and owner."
     ;; Reverse to get chronological order (oldest first)
     (setq stories (nreverse stories))
     ;; Create or switch to buffer
-    (let ((buffer (get-buffer-create "*Shortcut Stories: Requested by Me*")))
+    (let ((buffer (get-buffer-create (format "*Shortcut Stories: %s*" display-name))))
       (with-current-buffer buffer
         (let ((inhibit-read-only t))
           (erase-buffer)
           (shortcut-stories-list-mode)
+          ;; Store query type for refresh functionality
+          (setq-local shortcut-stories-list--query-field field)
+          (setq-local shortcut-stories-list--display-name display-name)
           ;; Create vtable
           (setq shortcut-stories-list--vtable
                 (make-vtable
@@ -552,9 +568,22 @@ Uses vtable to show story ID, title, state, epic, and owner."
                             "<mouse-1>" shortcut-stories-list-open-story-at-mouse)))
           (goto-char (point-min)))
         (display-buffer buffer)
-        (message "Found %d story%s requested by you"
+        (message "Found %d %s %s"
                  (length stories)
-                 (if (= (length stories) 1) "" "s"))))))
+                 (if (= (length stories) 1) "story" "stories")
+                 (downcase display-name))))))
+
+(defun shortcut-stories-list-requested-by-me ()
+  "Display a list of stories requested by the current user.
+Uses vtable to show story ID, title, state, epic, owner, and timestamps."
+  (interactive)
+  (shortcut--stories-list-display "requester" "Requested by Me"))
+
+(defun shortcut-stories-list-owned-by-me ()
+  "Display a list of stories owned by the current user.
+Uses vtable to show story ID, title, state, epic, owner, and timestamps."
+  (interactive)
+  (shortcut--stories-list-display "owner" "Owned by Me"))
 
 (defun shortcut-member-get (member-id)
   "Get the JSON payload for member with MEMBER-ID.
@@ -1814,6 +1843,7 @@ Results are added to the story cache for faster completion."
     ("v e" "epic" shortcut-epic-get)]
    ["List"
     ("l s" "stories requested by me" shortcut-stories-list-requested-by-me)
+    ("l o" "stories owned by me" shortcut-stories-list-owned-by-me)
     ("l e" "epics" shortcut-epic-list :transient nil :inapt-if (lambda () t))]
    ["Create"
     ("c s" "story" shortcut-story-create :transient nil :inapt-if (lambda () t))
