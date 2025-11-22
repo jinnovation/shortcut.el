@@ -315,4 +315,89 @@
         (expect (nth 1 result) :to-be nil)
         (expect (nth 2 result) :to-be nil)))))
 
+(describe "shortcut--story-create"
+  (before-each
+    ;; Clear the cache before each test
+    (clrhash shortcut--story-cache))
+
+  (it "should create a story via POST to /stories endpoint"
+    (let ((params shortcut-test-story-create-params))
+      ;; Mock the API request to return a created story
+      (spy-on 'shortcut--api-request
+              :and-return-value shortcut-test-story-fixture)
+
+      ;; Call the function under test
+      (let ((result (shortcut--story-create params)))
+        ;; Verify API was called with correct method and endpoint
+        (expect 'shortcut--api-request
+                :to-have-been-called-with "/stories" "POST" params)
+
+        ;; Verify the result matches the fixture
+        (expect result :to-equal shortcut-test-story-fixture)
+
+        ;; Verify the story was cached (cache uses string keys)
+        (let ((story-id (alist-get 'id result)))
+          (expect (gethash (format "%s" story-id) shortcut--story-cache)
+                  :not :to-be nil)))))
+
+  (it "should handle story creation with minimal required fields"
+    (let ((minimal-params '((name . "Minimal Story")
+                            (workflow_state_id . 500000001))))
+      ;; Mock the API request
+      (spy-on 'shortcut--api-request
+              :and-return-value shortcut-test-story-fixture)
+
+      ;; Call the function under test
+      (shortcut--story-create minimal-params)
+
+      ;; Verify API was called with minimal params
+      (expect 'shortcut--api-request
+              :to-have-been-called-with "/stories" "POST" minimal-params))))
+
+(describe "shortcut--workflow-default-state-id"
+  (before-each
+    ;; Clear the cache before each test
+    (clrhash shortcut--workflow-cache)
+    (clrhash shortcut--workflow-state-cache))
+
+  (it "should return the first 'unstarted' state when available"
+    (let ((workflow-id 500000000))
+      ;; Mock workflow-get to return the fixture
+      (spy-on 'shortcut--workflow-get
+              :and-return-value shortcut-test-workflow-fixture)
+
+      ;; Call the function under test
+      (let ((result (shortcut--workflow-default-state-id workflow-id)))
+        ;; Should return the ID of the 'Unstarted' state (first unstarted state)
+        (expect result :to-equal 500000001))))
+
+  (it "should return the first 'backlog' state when available"
+    (let ((workflow-id 500000100))
+      ;; Mock workflow-get to return the backlog fixture
+      (spy-on 'shortcut--workflow-get
+              :and-return-value shortcut-test-workflow-fixture-with-backlog)
+
+      ;; Call the function under test
+      (let ((result (shortcut--workflow-default-state-id workflow-id)))
+        ;; Should return the ID of the 'Backlog' state
+        (expect result :to-equal 500000101))))
+
+  (it "should return the first state if no backlog or unstarted state exists"
+    (let ((workflow-id 999999)
+          (custom-workflow '((id . 999999)
+                             (states . [((id . 800000001)
+                                         (name . "First State")
+                                         (type . "started"))
+                                        ((id . 800000002)
+                                         (name . "Second State")
+                                         (type . "done"))]))))
+      ;; Mock workflow-get to return a custom workflow with no backlog/unstarted
+      (spy-on 'shortcut--workflow-get
+              :and-return-value custom-workflow)
+
+      ;; Call the function under test
+      (let ((result (shortcut--workflow-default-state-id workflow-id)))
+        ;; Should return the ID of the first state
+        (expect result :to-equal 800000001)))))
+
 ;;; shortcut-test.el ends here

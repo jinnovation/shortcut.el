@@ -444,6 +444,15 @@ Returns the updated story."
    "PUT"
    fields))
 
+(defun shortcut--story-create (params)
+  "Create a new story with PARAMS.
+PARAMS should be an alist with at least 'name and 'workflow_state_id.
+Returns the created story as an alist."
+  (let ((story (shortcut--api-request "/stories" "POST" params)))
+    ;; Cache the newly created story
+    (shortcut--story-cache-add story)
+    story))
+
 (defun shortcut--stories-by-current-user-field (field)
   "Get all story IDs where current user matches FIELD.
 FIELD should be \"requester\" or \"owner\".
@@ -675,6 +684,20 @@ Also caches each state in `shortcut--workflow-state-cache'."
                (cache-key (format "%s:%s" workflow-id state-id)))
           (puthash cache-key state shortcut--workflow-state-cache))))
     (or states [])))
+
+(defun shortcut--workflow-default-state-id (workflow-id)
+  "Get the default workflow state ID for WORKFLOW-ID.
+Returns the first state with type 'backlog' or 'unstarted',
+or the first state if none match."
+  (let* ((states (shortcut--workflow-states-get workflow-id))
+         (default-state (seq-find
+                         (lambda (state)
+                           (member (alist-get 'type state)
+                                   '("backlog" "unstarted")))
+                         states)))
+    (or (and default-state (alist-get 'id default-state))
+        (and (> (length states) 0)
+             (alist-get 'id (aref states 0))))))
 
 (defun shortcut--workflow-state-type-display (state-type)
   "Get a display name for STATE-TYPE.
