@@ -487,9 +487,10 @@ Can be \"requester\" or \"owner\".")
 E.g., \"Requested by Me\" or \"Owned by Me\".")
 
 (defun shortcut--vtable-get-id (story _index)
-  "Get formatted ID for STORY."
-  (propertize (format "sc-%d" (alist-get 'id story))
-              'face 'shortcut-id))
+  "Get formatted ID for STORY.
+Returns plain text with face, not buttonized, since vtable handles clicks."
+  (let ((id (alist-get 'id story)))
+    (propertize (format "sc-%d" id) 'face 'shortcut-id)))
 
 (defun shortcut--vtable-get-title (story _index)
   "Get formatted title for STORY."
@@ -509,11 +510,12 @@ E.g., \"Requested by Me\" or \"Owned by Me\".")
     (propertize state-name 'face (shortcut--story-format-state state-name))))
 
 (defun shortcut--vtable-get-epic (story _index)
-  "Get formatted epic for STORY."
+  "Get formatted epic for STORY.
+Returns plain text with face, not buttonized, since vtable handles clicks."
   (let ((epic-id (alist-get 'epic_id story)))
     (if epic-id
-        (or (shortcut--epic-name epic-id)
-            (format "sc-%d" epic-id))
+        (let ((epic-name (shortcut--epic-name epic-id)))
+          (propertize (format "sc-%d %s" epic-id epic-name) 'face 'shortcut-id))
       "")))
 
 (defun shortcut--vtable-get-owner (story _index)
@@ -533,10 +535,12 @@ E.g., \"Requested by Me\" or \"Owned by Me\".")
   (let ((deadline (alist-get 'deadline story)))
     (or (shortcut--story-format-timestamp deadline) "")))
 
-(defun shortcut-stories-list-open-story ()
-  "Open the story at point in a detail view."
+(defun shortcut-stories-list-open-story (&optional story)
+  "Open the story at point in a detail view.
+If STORY is provided, use that as the row data.  Otherwise, fetch it
+via `vtable-current-object'."
   (interactive)
-  (when-let* ((row-data (vtable-current-object))
+  (when-let* ((row-data (or story (vtable-current-object)))
               (story-id (alist-get 'id row-data)))
     (shortcut-story-get story-id)))
 
@@ -797,7 +801,7 @@ Results are cached in `shortcut--epic-cache'."
 
 (defun shortcut--epic-cache-add (epic)
   "Add EPIC to the cache.
-Stores its ID, name, state, URL, health, and description.
+Stores its ID, name, state, URL, health, stats, and description.
 EPIC should be an alist with at least `id' and `name' fields."
   (when-let ((id (alist-get 'id epic))
              (name (alist-get 'name epic)))
@@ -805,6 +809,7 @@ EPIC should be an alist with at least `id' and `name' fields."
           (owner-ids (alist-get 'owner_ids epic))
           (app-url (alist-get 'app_url epic))
           (health (alist-get 'health epic))
+          (stats (alist-get 'stats epic))
           (description (alist-get 'description epic)))
       (puthash (format "%s" id)
                `((id . ,id)
@@ -813,6 +818,7 @@ EPIC should be an alist with at least `id' and `name' fields."
                  (owner_ids . ,owner-ids)
                  (app_url . ,app-url)
                  (health . ,health)
+                 (stats . ,stats)
                  (description . ,description))
                shortcut--epic-cache))))
 
@@ -1249,6 +1255,61 @@ If there are no tasks, shows a placeholder."
       (insert (propertize "empty" 'font-lock-face 'shortcut-placeholder))
       (insert "\n\n"))))
 
+(defun shortcut--buttonize-id (id entity-type &optional name)
+  "Make an ID clickable with appropriate action.
+ID is the numeric ID of the entity.
+ENTITY-TYPE is a symbol: 'story, 'epic, or 'iteration.
+NAME is optional display text to show after the ID."
+  (let* ((display-text (if name
+                           (format "sc-%d %s" id name)
+                         (format "sc-%d" id)))
+         (action-fn (pcase entity-type
+                      ('story #'shortcut-story-get)
+                      ('epic #'shortcut-epic-get)
+                      ('iteration #'shortcut-iteration-get)))
+         (help-text (format "Click or press RET to view %s" entity-type)))
+    (propertize display-text
+                'font-lock-face 'shortcut-id
+                'mouse-face 'highlight
+                'help-echo help-text
+                'keymap (let ((map (make-sparse-keymap)))
+                          (define-key map (kbd "RET")
+                            (lambda (&rest args)
+                              (interactive)
+                              (ignore args)
+                              (funcall action-fn id)))
+                          (define-key map (kbd "<mouse-1>")
+                            (lambda (event &rest args)
+                              (interactive "e")
+                              (ignore args)
+                              (mouse-set-point event)
+                              (funcall action-fn id)))
+                          (define-key map (kbd "<mouse-2>")
+                            (lambda (event &rest args)
+                              (interactive "e")
+                              (ignore args)
+                              (mouse-set-point event)
+                              (funcall action-fn id)))
+                          map))))
+
+(defun shortcut--buttonize-story-id (id &optional name)
+  "Make a story ID clickable.
+ID is the numeric story ID.
+NAME is optional display text to show after the ID."
+  (shortcut--buttonize-id id 'story name))
+
+(defun shortcut--buttonize-epic-id (id &optional name)
+  "Make an epic ID clickable.
+ID is the numeric epic ID.
+NAME is optional display text to show after the ID."
+  (shortcut--buttonize-id id 'epic name))
+
+(defun shortcut--buttonize-iteration-id (id &optional name)
+  "Make an iteration ID clickable.
+ID is the numeric iteration ID.
+NAME is optional display text to show after the ID."
+  (shortcut--buttonize-id id 'iteration name))
+
 (defun shortcut--story-link-invert-verb (verb)
   "Invert the relationship VERB for story links.
 When the current story is the subject, we need to invert the verb.
@@ -1278,34 +1339,12 @@ If there are no story links, shows a placeholder."
                                    verb))
                    ;; Get the linked story from cache if available
                    (linked-story (gethash (format "%s" linked-id) shortcut--story-cache))
-                   (linked-name (when linked-story (alist-get 'name linked-story)))
-                   (display-text (if linked-name
-                                     (format "sc-%d %s" linked-id linked-name)
-                                   (format "sc-%d" linked-id))))
+                   (linked-name (when linked-story (alist-get 'name linked-story))))
               (insert "  ")
               (insert (propertize display-verb 'font-lock-face 'font-lock-keyword-face))
               (insert " ")
-              ;; Make the story link clickable
-              (insert (propertize display-text
-                                  'font-lock-face 'shortcut-id
-                                  'mouse-face 'highlight
-                                  'help-echo "Click or press RET to view story"
-                                  'keymap (let ((map (make-sparse-keymap)))
-                                            (define-key map (kbd "RET")
-                                              (lambda ()
-                                                (interactive)
-                                                (shortcut-story-get linked-id)))
-                                            (define-key map (kbd "<mouse-1>")
-                                              (lambda (event)
-                                                (interactive "e")
-                                                (mouse-set-point event)
-                                                (shortcut-story-get linked-id)))
-                                            (define-key map (kbd "<mouse-2>")
-                                              (lambda (event)
-                                                (interactive "e")
-                                                (mouse-set-point event)
-                                                (shortcut-story-get linked-id)))
-                                            map)))
+              ;; Make the story link clickable using helper function
+              (insert (shortcut--buttonize-story-id linked-id linked-name))
               (insert "\n")))
           (insert "\n"))
       (insert (propertize "empty" 'font-lock-face 'shortcut-placeholder))
@@ -1470,30 +1509,8 @@ If there are no comments, shows a placeholder."
         (when epic-id
           (insert (propertize (format "%-15s" "Epic:")
                               'font-lock-face 'shortcut-story-header))
-          (let* ((epic-name (shortcut--epic-name epic-id))
-                 (text (if epic-name
-                           (format "sc-%d %s" epic-id epic-name)
-                         (format "sc-%d" epic-id))))
-            (insert (propertize text
-                                'font-lock-face 'shortcut-id
-                                'mouse-face 'highlight
-                                'help-echo "Click or press RET to view epic"
-                                'keymap (let ((map (make-sparse-keymap)))
-                                          (define-key map (kbd "RET")
-                                            (lambda ()
-                                              (interactive)
-                                              (shortcut-epic-get epic-id)))
-                                          (define-key map (kbd "<mouse-1>")
-                                            (lambda (event)
-                                              (interactive "e")
-                                              (mouse-set-point event)
-                                              (shortcut-epic-get epic-id)))
-                                          (define-key map (kbd "<mouse-2>")
-                                            (lambda (event)
-                                              (interactive "e")
-                                              (mouse-set-point event)
-                                              (shortcut-epic-get epic-id)))
-                                          map)))
+          (let ((epic-name (shortcut--epic-name epic-id)))
+            (insert (shortcut--buttonize-epic-id epic-id epic-name))
             (insert "\n")))
         (when iteration-id
           (shortcut--story-insert-header "Iteration" (format "sc-%d" iteration-id) 'shortcut-id))

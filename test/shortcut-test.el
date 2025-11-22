@@ -400,4 +400,79 @@
         ;; Should return the ID of the first state
         (expect result :to-equal 800000001)))))
 
+(describe "shortcut--buttonize-id"
+  (it "should format ID without name"
+    (let ((result (shortcut--buttonize-id 123 'story)))
+      (expect result :to-equal "sc-123")))
+
+  (it "should format ID with name"
+    (let ((result (shortcut--buttonize-id 123 'story "My Story")))
+      (expect result :to-equal "sc-123 My Story")))
+
+  (it "should apply correct text properties"
+    (let ((result (shortcut--buttonize-id 123 'story)))
+      (expect (get-text-property 0 'font-lock-face result) :to-equal 'shortcut-id)
+      (expect (get-text-property 0 'mouse-face result) :to-equal 'highlight)))
+
+  (it "should create help-echo with entity type"
+    (let ((result-story (shortcut--buttonize-id 123 'story))
+          (result-epic (shortcut--buttonize-id 456 'epic)))
+      (expect (get-text-property 0 'help-echo result-story) :to-equal "Click or press RET to view story")
+      (expect (get-text-property 0 'help-echo result-epic) :to-equal "Click or press RET to view epic")))
+
+  (it "should set up keymap with RET, mouse-1, and mouse-2"
+    (let* ((result (shortcut--buttonize-id 123 'story))
+           (keymap (get-text-property 0 'keymap result)))
+      (expect (keymapp keymap) :to-be-truthy)
+      (expect (lookup-key keymap (kbd "RET")) :to-be-truthy)
+      (expect (lookup-key keymap (kbd "<mouse-1>")) :to-be-truthy)
+      (expect (lookup-key keymap (kbd "<mouse-2>")) :to-be-truthy))))
+
+(describe "shortcut--buttonize-story-id"
+  (it "should return propertized string with sc-ID format"
+    (let ((result (shortcut--buttonize-story-id 12345)))
+      (expect result :to-equal "sc-12345")
+      (expect (get-text-property 0 'font-lock-face result) :to-equal 'shortcut-id)
+      (expect (get-text-property 0 'mouse-face result) :to-equal 'highlight)
+      (expect (get-text-property 0 'help-echo result) :to-match "view story")))
+
+  (it "should include name when provided"
+    (let ((result (shortcut--buttonize-story-id 12345 "Test Story")))
+      (expect result :to-equal "sc-12345 Test Story")))
+
+  (it "should have clickable keymap with RET binding"
+    (let* ((result (shortcut--buttonize-story-id 12345))
+           (keymap (get-text-property 0 'keymap result)))
+      (expect keymap :not :to-be nil)
+      (expect (lookup-key keymap (kbd "RET")) :not :to-be nil)
+      (expect (lookup-key keymap (kbd "<mouse-1>")) :not :to-be nil))))
+
+(describe "shortcut--buttonize-epic-id"
+  (it "should return propertized string for epic"
+    (let ((result (shortcut--buttonize-epic-id 67890)))
+      (expect result :to-equal "sc-67890")
+      (expect (get-text-property 0 'help-echo result) :to-match "view epic")))
+
+  (it "should include epic name when provided"
+    (let ((result (shortcut--buttonize-epic-id 67890 "Test Epic")))
+      (expect result :to-equal "sc-67890 Test Epic"))))
+
+(describe "shortcut--buttonize-iteration-id"
+  :var (shortcut-iteration-get-exists)
+
+  (before-all
+    ;; Check if shortcut-iteration-get function exists
+    (setq shortcut-iteration-get-exists (fboundp 'shortcut-iteration-get)))
+
+  (it "should return propertized string for iteration"
+    (assume shortcut-iteration-get-exists "shortcut-iteration-get not yet implemented")
+    (let ((result (shortcut--buttonize-iteration-id 999)))
+      (expect result :to-equal "sc-999")
+      (expect (get-text-property 0 'help-echo result) :to-match "view iteration")))
+
+  (it "should include iteration name when provided"
+    (assume shortcut-iteration-get-exists "shortcut-iteration-get not yet implemented")
+    (let ((result (shortcut--buttonize-iteration-id 999 "Sprint 10")))
+      (expect result :to-equal "sc-999 Sprint 10"))))
+
 ;;; shortcut-test.el ends here
