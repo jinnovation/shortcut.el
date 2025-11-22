@@ -1,6 +1,6 @@
 ---
 name: shortcut-api-lookup
-description: Look up Shortcut REST API methods, schemas, and signatures.
+description: Look up Shortcut REST API methods, schemas, and signatures. Use this instead of fetching the documentation webpages.
 ---
 
 # Shortcut API Lookup

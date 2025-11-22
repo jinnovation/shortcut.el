@@ -62,6 +62,11 @@ this many characters.  This helps avoid excessive API calls."
   :type 'integer
   :group 'shortcut)
 
+;;; Constants
+
+(defconst shortcut-api-max-page-size 250
+  "Maximum page size allowed by the Shortcut API for search endpoints.")
+
 ;;; Cache Variables
 
 (defvar shortcut--member-cache (make-hash-table :test 'equal)
@@ -267,19 +272,22 @@ Completed stories are displayed with strikethrough and grey color."
             (> (string-to-number (cdr a))
                (string-to-number (cdr b)))))))
 
-(defun shortcut--stories-search (input)
+(defun shortcut--stories-search (input &optional page-size)
   "Search for stories using the Shortcut Search API with INPUT string.
 Returns an alist where keys are \"ID TITLE\" display strings
 \(with propertized ID) and values are story IDs (as strings
 without \"sc-\" prefix).
-Caches retrieved stories in `shortcut--story-cache'."
+Caches retrieved stories in `shortcut--story-cache'.
+Optional PAGE-SIZE specifies the number of results per page (default 50,
+max `shortcut-api-max-page-size')."
   (condition-case err
       (let* ((query (if (string-empty-p input)
                         "is:story"
                       (format "is:story %s" input)))
+             (actual-page-size (min (or page-size 50) shortcut-api-max-page-size))
              (body `((query . ,query)
                      (entity_types . ["story"])
-                     (page_size . 50)))
+                     (page_size . ,actual-page-size)))
              (response (shortcut--api-request "/search" "GET" body))
              (stories (alist-get 'data (alist-get 'stories response)))
              (candidates '()))
@@ -2320,10 +2328,11 @@ This command is not yet implemented."
 (defun shortcut-story-cache-populate (query)
   "Pre-populate the story cache with stories matching QUERY.
 Prompts for a query string and searches for stories using the Shortcut API.
-Results are added to the story cache for faster completion."
+Results are added to the story cache for faster completion.
+Uses the maximum page size allowed by the API for efficient caching."
   (interactive "sSearch query: ")
   (message "Searching for stories...")
-  (let ((results (shortcut--stories-search query)))
+  (let ((results (shortcut--stories-search query shortcut-api-max-page-size)))
     (message "Added %d stories to cache" (length results))))
 
 (transient-define-prefix shortcut-dispatch ()
