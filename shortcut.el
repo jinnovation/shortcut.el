@@ -90,6 +90,10 @@ Keys are group IDs (as strings), values are group objects.")
 Keys are \"workflow-id:state-id\" strings, values are state objects with
 name, id, and type.")
 
+(defvar shortcut--iteration-cache (make-hash-table :test 'equal)
+  "Cache of iterations by ID.
+Keys are iteration IDs (as strings), values are iteration objects.")
+
 (defun shortcut--clear-story-cache ()
   "Clear the story cache.
 This is useful when cached story information becomes stale or outdated."
@@ -98,12 +102,13 @@ This is useful when cached story information becomes stale or outdated."
 
 (defun shortcut--clear-all-caches ()
   "Clear all Shortcut caches.
-This clears story, epic, member, workflow, workflow state, and group caches,
-as well as the current member cache.  Useful when cached information becomes
-stale or outdated."
+This clears story, epic, iteration, member, workflow, workflow state,
+and group caches, as well as the current member cache.  Useful when
+cached information becomes stale or outdated."
   (interactive)
   (setq shortcut--story-cache (make-hash-table :test 'equal))
   (setq shortcut--epic-cache (make-hash-table :test 'equal))
+  (setq shortcut--iteration-cache (make-hash-table :test 'equal))
   (setq shortcut--member-cache (make-hash-table :test 'equal))
   (setq shortcut--workflow-cache (make-hash-table :test 'equal))
   (setq shortcut--workflow-state-cache (make-hash-table :test 'equal))
@@ -870,6 +875,68 @@ Returns nil if epic-id is nil or health information is unavailable."
               (list status text updated-at))))
       (error nil))))
 
+(defun shortcut--iteration-get (iteration-id)
+  "Get the JSON payload for iteration with ITERATION-ID.
+Returns the iteration as an alist parsed from JSON.
+Results are cached in `shortcut--iteration-cache'."
+  (let ((iteration-id-str (format "%s" iteration-id)))
+    (or (gethash iteration-id-str shortcut--iteration-cache)
+        (let ((iteration (shortcut--api-request (format "/iterations/%s" iteration-id-str))))
+          (shortcut--iteration-cache-add iteration)
+          iteration))))
+
+(defun shortcut--iteration-cache-add (iteration)
+  "Add ITERATION to the cache.
+Stores its ID, name, status, dates, URL, and stats.
+ITERATION should be an alist with at least `id' and `name' fields."
+  (when-let ((id (alist-get 'id iteration))
+             (name (alist-get 'name iteration)))
+    (let ((status (alist-get 'status iteration))
+          (start-date (alist-get 'start_date iteration))
+          (end-date (alist-get 'end_date iteration))
+          (app-url (alist-get 'app_url iteration))
+          (stats (alist-get 'stats iteration))
+          (description (alist-get 'description iteration)))
+      (puthash (format "%s" id)
+               `((id . ,id)
+                 (name . ,name)
+                 (status . ,status)
+                 (start_date . ,start-date)
+                 (end_date . ,end-date)
+                 (app_url . ,app-url)
+                 (stats . ,stats)
+                 (description . ,description))
+               shortcut--iteration-cache))))
+
+(defun shortcut--iteration-cache-candidates ()
+  "Get a list of iteration candidates from cache for `completing-read'.
+Returns an alist where keys are \"ID NAME\" strings for matching,
+and values are the iteration IDs (as strings without \"sc-\" prefix)."
+  (let ((candidates '()))
+    (maphash (lambda (key value)
+               (let* ((id key)
+                      (name (alist-get 'name value))
+                      (display-key (if name
+                                       (format "%s %s"
+                                               (propertize id 'face 'shortcut-id)
+                                               name)
+                                     id)))
+                 (push (cons display-key id) candidates)))
+             shortcut--iteration-cache)
+    (sort candidates
+          (lambda (a b)
+            (> (string-to-number (cdr a))
+               (string-to-number (cdr b)))))))
+
+(defun shortcut--iteration-name (iteration-id)
+  "Get the name of the iteration with ITERATION-ID.
+Returns the iteration name as a string, or nil if lookup fails or iteration-id is nil."
+  (when iteration-id
+    (condition-case nil
+        (let ((iteration (shortcut--iteration-get iteration-id)))
+          (alist-get 'name iteration))
+      (error nil))))
+
 (defun shortcut--epics-search (input)
   "Search for epics using the Shortcut Search API with INPUT string.
 Returns an alist where keys are \"ID NAME\" display strings
@@ -1003,6 +1070,132 @@ candidate).  Groups epics by their state."
            ;; Get state name, or use "Unknown" as default
            (group-name (or state "Unknown")))
       group-name)))
+
+(defun shortcut--iterations-search (input)
+  "Search for iterations using the Shortcut Search API with INPUT string.
+Returns an alist where keys are \"ID NAME\" display strings
+\(with propertized ID) and values are iteration IDs (as strings
+without \"sc-\" prefix).
+Caches retrieved iterations in `shortcut--iteration-cache'."
+  (condition-case err
+      (let* ((query (if (string-empty-p input)
+                        "is:iteration"
+                      (format "is:iteration %s" input)))
+             (endpoint (format "/search/iterations?query=%s&page_size=50"
+                               (url-hexify-string query)))
+             (response (shortcut--api-request endpoint "GET"))
+             (iterations (alist-get 'data response))
+             (candidates '()))
+        ;; Cache each iteration and collect candidates
+        (when iterations
+          (seq-doseq (iteration iterations)
+            (shortcut--iteration-cache-add iteration)
+            (when-let* ((id (alist-get 'id iteration))
+                        (name (alist-get 'name iteration))
+                        (id-str (format "%s" id)))
+              (let ((display-key (format "%s %s"
+                                         (propertize id-str 'face 'shortcut-id)
+                                         name)))
+                (push (cons display-key id-str) candidates)))))
+        ;; Return in descending order (most recent first)
+        (sort candidates
+              (lambda (a b)
+                (> (string-to-number (cdr a))
+                   (string-to-number (cdr b))))))
+    (error
+     ;; On error, return empty list and log
+     (message "Shortcut iteration search API error: %s" (error-message-string err))
+     '())))
+
+(defun shortcut--iteration-should-search-p (input)
+  "Return non-nil if we should trigger an API search for INPUT.
+Checks minimum character length."
+  (>= (length input) shortcut-story-search-min-chars))
+
+(defun shortcut--iteration-merge-candidates (cache-candidates search-ids)
+  "Merge CACHE-CANDIDATES with SEARCH-IDS, removing duplicates.
+CACHE-CANDIDATES is an alist of (display-string . id).
+SEARCH-IDS is a list of iteration ID strings from API search.
+Returns a merged alist sorted by ID (most recent first)."
+  (let* ((cache-ids (mapcar #'cdr cache-candidates))
+         (all-ids (delete-dups (append search-ids cache-ids)))
+         (merged '()))
+    ;; Build merged list with display strings
+    (dolist (id all-ids)
+      (let* ((cached-entry (gethash id shortcut--iteration-cache))
+             (name (alist-get 'name cached-entry))
+             (display-key (if name
+                              (format "%s %s"
+                                      (propertize id 'face 'shortcut-id)
+                                      name)
+                            id)))
+        (push (cons display-key id) merged)))
+    merged))
+
+(defun shortcut--iteration-display-sort-function (candidates)
+  "Sort iteration CANDIDATES within groups by ID in descending order.
+Candidates are in \"ID NAME\" format.  Sorts by iteration ID (most recent first)."
+  (sort candidates
+        (lambda (a b)
+          ;; Extract ID from "ID NAME" format
+          (let ((id-a (when (string-match "^\\([0-9]+\\)" a)
+                        (string-to-number (match-string 1 a))))
+                (id-b (when (string-match "^\\([0-9]+\\)" b)
+                        (string-to-number (match-string 1 b)))))
+            (and id-a id-b (> id-a id-b))))))
+
+(defun shortcut--iteration-annotation-function (candidate)
+  "Annotation function for iteration completion.
+CANDIDATE is a display key string in format \"ID NAME\".
+Returns an annotation string with status."
+  (let* (;; Extract the iteration ID from the candidate string
+         (id (when (string-match "^\\([0-9]+\\)" candidate)
+               (match-string 1 candidate)))
+         ;; Get iteration from cache
+         (iteration (when id (gethash id shortcut--iteration-cache)))
+         (status (alist-get 'status iteration))
+         ;; Build annotation
+         (status-str (when status
+                       (format " [%s]" status)))
+         (annotation (concat
+                      (propertize " " 'display '(space :align-to center))
+                      (when status-str
+                        (propertize status-str 'face 'font-lock-comment-face)))))
+    annotation))
+
+(defun shortcut--iteration-group-function (candidate transform)
+  "Group function for iteration completion.
+CANDIDATE is a display key string in format \"ID NAME\".
+TRANSFORM is either nil (return group title) or non-nil (return transformed
+candidate).  Groups iterations by their status."
+  (if transform
+      ;; When TRANSFORM is non-nil, return the candidate as-is
+      candidate
+    ;; When TRANSFORM is nil, return the group title for this candidate
+    (let* (;; Extract the iteration ID from the candidate string
+           (id (when (string-match "^\\([0-9]+\\)" candidate)
+                 (match-string 1 candidate)))
+           ;; Get iteration from cache
+           (iteration (when id (gethash id shortcut--iteration-cache)))
+           (status (alist-get 'status iteration))
+           ;; Get status name, or use "Unknown" as default
+           (group-name (or status "Unknown")))
+      group-name)))
+
+(defun shortcut--iteration-completion-table (string predicate action)
+  "Completion table function for iteration selection with dynamic search.
+STRING is the current input, PREDICATE is the completion predicate,
+and ACTION is the completion action (t, lambda, metadata, etc.)."
+  (funcall (shortcut--make-completion-table
+            :category 'shortcut-iteration
+            :cache-fn #'shortcut--iteration-cache-candidates
+            :search-fn #'shortcut--iterations-search
+            :merge-fn #'shortcut--iteration-merge-candidates
+            :should-search-fn #'shortcut--iteration-should-search-p
+            :annotation-fn #'shortcut--iteration-annotation-function
+            :group-fn #'shortcut--iteration-group-function
+            :sort-fn #'shortcut--iteration-display-sort-function)
+           string predicate action))
 
 ;;; Story Mode
 
@@ -1513,7 +1706,11 @@ If there are no comments, shows a placeholder."
             (insert (shortcut--buttonize-epic-id epic-id epic-name))
             (insert "\n")))
         (when iteration-id
-          (shortcut--story-insert-header "Iteration" (format "sc-%d" iteration-id) 'shortcut-id))
+          (insert (propertize (format "%-15s" "Iteration:")
+                              'font-lock-face 'shortcut-story-header))
+          (let ((iteration-name (shortcut--iteration-name iteration-id)))
+            (insert (shortcut--buttonize-iteration-id iteration-id iteration-name))
+            (insert "\n")))
 
         (shortcut--story-insert-labels labels)
 
@@ -1882,6 +2079,179 @@ or select from cached epics."
         (goto-char (point-min))
         (display-buffer (current-buffer))))))
 
+;;; Iteration Mode
+
+(defvar-local shortcut-iteration--current-id nil
+  "The ID of the iteration currently displayed in this buffer.")
+
+(define-derived-mode shortcut-iteration-mode shortcut-base-mode "Shortcut-Iteration"
+                     "Major mode for viewing Shortcut iterations.
+
+\\{shortcut-iteration-mode-map}"
+                     :group 'shortcut)
+
+(defun shortcut-iteration-refresh ()
+  "Refresh the current iteration buffer."
+  (interactive)
+  (when shortcut-iteration--current-id
+    (let ((inhibit-read-only t)
+          (iteration (shortcut--iteration-get shortcut-iteration--current-id))
+          (pos (point)))
+      (erase-buffer)
+      (shortcut--iteration-format-buffer iteration)
+      (goto-char (min pos (point-max))))))
+
+(defun shortcut-iteration-browse-url ()
+  "Open the current iteration in a web browser."
+  (interactive)
+  (when shortcut-iteration--current-id
+    (let* ((iteration (shortcut--iteration-get shortcut-iteration--current-id))
+           (url (alist-get 'app_url iteration)))
+      (if url
+          (browse-url url)
+        (message "No URL available for this iteration")))))
+
+(defun shortcut-iteration-copy-id ()
+  "Copy the current iteration ID to the kill ring."
+  (interactive)
+  (if shortcut-iteration--current-id
+      (let ((id-string (format "sc-%d" shortcut-iteration--current-id)))
+        (kill-new id-string)
+        (message "Copied %s to kill ring" id-string))
+    (message "No iteration ID available")))
+
+;;; Iteration Buffer Formatting
+
+(defun shortcut--iteration-insert-stats (stats)
+  "Insert STATS section showing story and point counts for iteration."
+  (when stats
+    (magit-insert-section (stats)
+      (magit-insert-heading "Stats")
+
+      (let ((num-stories-total (alist-get 'num_stories_total stats))
+            (num-stories-unstarted (alist-get 'num_stories_unstarted stats))
+            (num-stories-started (alist-get 'num_stories_started stats))
+            (num-stories-done (alist-get 'num_stories_done stats))
+            (num-points-total (alist-get 'num_points_total stats))
+            (num-points-unstarted (alist-get 'num_points_unstarted stats))
+            (num-points-started (alist-get 'num_points_started stats))
+            (num-points-done (alist-get 'num_points_done stats)))
+
+        (when num-stories-total
+          (shortcut--story-insert-header "Stories"
+                                         (format "%d total" num-stories-total))
+          (when num-stories-unstarted
+            (insert (propertize "                " 'font-lock-face 'shortcut-story-header))
+            (insert (propertize (format "%d unstarted" num-stories-unstarted)
+                                'font-lock-face 'shortcut-story-state-unstarted))
+            (insert "\n"))
+          (when num-stories-started
+            (insert (propertize "                " 'font-lock-face 'shortcut-story-header))
+            (insert (propertize (format "%d started" num-stories-started)
+                                'font-lock-face 'shortcut-story-state-started))
+            (insert "\n"))
+          (when num-stories-done
+            (insert (propertize "                " 'font-lock-face 'shortcut-story-header))
+            (insert (propertize (format "%d done" num-stories-done)
+                                'font-lock-face 'shortcut-story-state-done))
+            (insert "\n")))
+
+        (when num-points-total
+          (shortcut--story-insert-header "Points"
+                                         (format "%d total" num-points-total))
+          (when num-points-unstarted
+            (insert (propertize "                " 'font-lock-face 'shortcut-story-header))
+            (insert (propertize (format "%d unstarted" num-points-unstarted)
+                                'font-lock-face 'shortcut-story-state-unstarted))
+            (insert "\n"))
+          (when num-points-started
+            (insert (propertize "                " 'font-lock-face 'shortcut-story-header))
+            (insert (propertize (format "%d started" num-points-started)
+                                'font-lock-face 'shortcut-story-state-started))
+            (insert "\n"))
+          (when num-points-done
+            (insert (propertize "                " 'font-lock-face 'shortcut-story-header))
+            (insert (propertize (format "%d done" num-points-done)
+                                'font-lock-face 'shortcut-story-state-done))
+            (insert "\n"))))
+
+      (insert "\n"))))
+
+(defun shortcut--iteration-format-buffer (iteration)
+  "Format ITERATION data into a readable buffer similar to story buffers."
+  (magit-insert-section (iteration iteration)
+    (let* ((id (alist-get 'id iteration))
+           (name (alist-get 'name iteration))
+           (status (alist-get 'status iteration))
+           (start-date (alist-get 'start_date iteration))
+           (end-date (alist-get 'end_date iteration))
+           (created-at (alist-get 'created_at iteration))
+           (updated-at (alist-get 'updated_at iteration))
+           (description (alist-get 'description iteration))
+           (stats (alist-get 'stats iteration))
+           (app-url (alist-get 'app_url iteration)))
+
+      ;; Set header line with iteration ID and title
+      (setq header-line-format
+            (concat (propertize (format "sc-%d" id) 'face 'shortcut-id)
+                    " "
+                    (propertize name 'face 'shortcut-story-title)))
+
+      (magit-insert-section (overview)
+        (magit-insert-heading "Overview")
+
+        (when status
+          (shortcut--story-insert-header "Status" status))
+
+        (when start-date
+          (shortcut--story-insert-header "Start Date" start-date))
+
+        (when end-date
+          (shortcut--story-insert-header "End Date" end-date))
+
+        (shortcut--story-insert-header "Created" (shortcut--story-format-timestamp created-at))
+        (shortcut--story-insert-header "Updated" (shortcut--story-format-timestamp updated-at))
+
+        (when app-url
+          (shortcut--story-insert-header "URL" app-url))
+
+        (insert "\n"))
+
+      ;; Insert stats if available
+      (when stats
+        (shortcut--iteration-insert-stats stats))
+
+      ;; Insert description if available
+      (when description
+        (magit-insert-section (description)
+          (magit-insert-heading "Description")
+          (insert description)
+          (insert "\n\n"))))))
+
+(defun shortcut-iteration-get (iteration-id)
+  "Interactively get and display a Shortcut iteration by ITERATION-ID.
+When called interactively, prompts for the iteration ID using `completing-read'.
+Supports dynamic searching - type to search for iterations via the API,
+or select from cached iterations."
+  (interactive
+   (let* (;; Use completion table function for dynamic search
+          (id-str (completing-read "Iteration ID: "
+                                   #'shortcut--iteration-completion-table
+                                   nil nil))
+          (id (if (string-match "^sc-\\([0-9]+\\)$" id-str)
+                  (string-to-number (match-string 1 id-str))
+                (string-to-number id-str))))
+     (list id)))
+  (let ((iteration (shortcut--iteration-get iteration-id)))
+    (with-current-buffer (get-buffer-create (format "*Shortcut Iteration: sc-%s*" iteration-id))
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (shortcut-iteration-mode)
+        (setq shortcut-iteration--current-id iteration-id)
+        (shortcut--iteration-format-buffer iteration)
+        (goto-char (point-min))
+        (display-buffer (current-buffer))))))
+
 ;;; Member and Workspace Functions
 
 (defvar shortcut--current-member-cache nil
@@ -1965,7 +2335,8 @@ Results are added to the story cache for faster completion."
                       (shortcut--current-user-name)))
    ["Visit"
     ("v s" "story" shortcut-story-get)
-    ("v e" "epic" shortcut-epic-get)]
+    ("v e" "epic" shortcut-epic-get)
+    ("v i" "iteration" shortcut-iteration-get)]
    ["List"
     ("l s" "stories requested by me" shortcut-stories-list-requested-by-me)
     ("l o" "stories owned by me" shortcut-stories-list-owned-by-me)

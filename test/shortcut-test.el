@@ -93,6 +93,111 @@
         (expect (alist-get 'app_url result) :to-equal "https://app.shortcut.com/org/epic/67890")
         (expect (alist-get 'description result) :to-equal "This is a test epic")))))
 
+(describe "shortcut--iteration-get"
+  (before-each
+    ;; Clear the cache before each test
+    (clrhash shortcut--iteration-cache))
+
+  (it "should fetch and cache an iteration from the API"
+    (let ((iteration-id 11111))
+      ;; Mock the API request function to return fixture data
+      (spy-on 'shortcut--api-request
+              :and-return-value shortcut-test-iteration-fixture)
+
+      ;; Call the function under test
+      (let ((result (shortcut--iteration-get iteration-id)))
+        ;; Verify API was called with correct endpoint
+        (expect 'shortcut--api-request
+                :to-have-been-called-with "/iterations/11111")
+
+        ;; Verify the result matches the fixture
+        (expect result :to-equal shortcut-test-iteration-fixture)
+
+        ;; Verify the iteration ID is in the result
+        (expect (alist-get 'id result) :to-equal iteration-id)
+
+        ;; Verify the iteration name is correct
+        (expect (alist-get 'name result) :to-equal "Sprint 42")
+
+        ;; Verify the iteration was cached (cache uses string keys)
+        (expect (gethash (format "%s" iteration-id) shortcut--iteration-cache) :not :to-be nil))))
+
+  (it "should return cached iteration on second call without hitting API"
+    (let ((iteration-id 11111))
+      ;; Mock the API request function
+      (spy-on 'shortcut--api-request
+              :and-return-value shortcut-test-iteration-fixture)
+
+      ;; First call - should hit API
+      (shortcut--iteration-get iteration-id)
+      (expect 'shortcut--api-request :to-have-been-called-times 1)
+
+      ;; Second call - should use cache
+      (let ((result (shortcut--iteration-get iteration-id)))
+        ;; API should still only have been called once
+        (expect 'shortcut--api-request :to-have-been-called-times 1)
+
+        ;; Result should still be correct (cached version with subset of fields)
+        (expect (alist-get 'id result) :to-equal iteration-id)
+        (expect (alist-get 'name result) :to-equal "Sprint 42")
+        (expect (alist-get 'status result) :to-equal "started")
+        (expect (alist-get 'app_url result) :to-equal "https://app.shortcut.com/org/iteration/11111")
+        (expect (alist-get 'description result) :to-equal "Q4 2024 Sprint 42")))))
+
+(describe "shortcut--iteration-name"
+  (before-each
+    ;; Clear the cache before each test
+    (clrhash shortcut--iteration-cache))
+
+  (it "should return the iteration name"
+    (let ((iteration-id 11111))
+      ;; Mock the API request function to return fixture data
+      (spy-on 'shortcut--api-request
+              :and-return-value shortcut-test-iteration-fixture)
+
+      ;; Call the function under test
+      (let ((result (shortcut--iteration-name iteration-id)))
+        ;; Verify the result is the iteration name
+        (expect result :to-equal "Sprint 42"))))
+
+  (it "should return nil for nil iteration-id"
+    (let ((result (shortcut--iteration-name nil)))
+      (expect result :to-be nil))))
+
+(describe "shortcut--iteration-cache-candidates"
+  (before-each
+    ;; Clear the cache before each test
+    (clrhash shortcut--iteration-cache))
+
+  (it "should return formatted candidates from cache"
+    ;; Add test iteration to cache
+    (shortcut--iteration-cache-add shortcut-test-iteration-fixture)
+
+    ;; Call the function under test
+    (let ((result (shortcut--iteration-cache-candidates)))
+      ;; Verify we got one candidate
+      (expect (length result) :to-equal 1)
+
+      ;; Verify the candidate format (cons cell with display key and ID)
+      (let* ((candidate (car result))
+             (display-key (car candidate))
+             (id (cdr candidate)))
+        ;; Verify ID is correct
+        (expect id :to-equal "11111")
+
+        ;; Verify display key contains both ID and name
+        (expect display-key :to-match "11111")
+        (expect display-key :to-match "Sprint 42")))))
+
+(describe "shortcut--iteration-completion-table"
+  (before-each
+    ;; Clear the cache before each test
+    (clrhash shortcut--iteration-cache))
+
+  (it "should be a valid completion table function"
+    ;; Verify the function is defined and callable
+    (expect (fboundp 'shortcut--iteration-completion-table) :to-be-truthy)))
+
 (describe "shortcut--workflow-get"
   (before-each
     ;; Clear the cache before each test
@@ -474,5 +579,125 @@
     (assume shortcut-iteration-get-exists "shortcut-iteration-get not yet implemented")
     (let ((result (shortcut--buttonize-iteration-id 999 "Sprint 10")))
       (expect result :to-equal "sc-999 Sprint 10"))))
+
+(describe "shortcut--iterations-search"
+  (before-each
+    ;; Clear the cache before each test
+    (clrhash shortcut--iteration-cache))
+
+  (it "should search for iterations and return formatted candidates"
+    (let ((search-response
+           '((total . 2)
+             (data . [((id . 11111)
+                       (name . "Sprint 42")
+                       (status . "started"))
+                      ((id . 22222)
+                       (name . "Sprint 43")
+                       (status . "unstarted"))])
+             (next . nil))))
+      ;; Mock the API request to return search results
+      (spy-on 'shortcut--api-request
+              :and-return-value search-response)
+
+      ;; Call the function under test
+      (let ((result (shortcut--iterations-search "Sprint")))
+        ;; Verify API was called with correct search endpoint
+        (expect 'shortcut--api-request
+                :to-have-been-called)
+
+        ;; Verify the result is an alist
+        (expect (listp result) :to-be-truthy)
+        (expect (length result) :to-equal 2)
+
+        ;; Verify the candidates are in the correct format (display-key . id)
+        (let ((first-candidate (car result))
+              (second-candidate (cadr result)))
+          ;; Results should be sorted by ID descending (most recent first)
+          (expect (cdr first-candidate) :to-equal "22222")
+          (expect (cdr second-candidate) :to-equal "11111")
+
+          ;; Display keys should contain ID and name
+          (expect (car first-candidate) :to-match "22222")
+          (expect (car first-candidate) :to-match "Sprint 43")
+          (expect (car second-candidate) :to-match "11111")
+          (expect (car second-candidate) :to-match "Sprint 42"))
+
+        ;; Verify iterations were cached
+        (expect (gethash "11111" shortcut--iteration-cache) :not :to-be nil)
+        (expect (gethash "22222" shortcut--iteration-cache) :not :to-be nil))))
+
+  (it "should handle empty search input with default query"
+    (spy-on 'shortcut--api-request
+            :and-return-value '((total . 0) (data . []) (next . nil)))
+
+    (shortcut--iterations-search "")
+
+    ;; Verify API was called
+    (expect 'shortcut--api-request :to-have-been-called))
+
+  (it "should return empty list on API error"
+    (spy-on 'shortcut--api-request
+            :and-call-fake (lambda (&rest _) (error "API error")))
+
+    (let ((result (shortcut--iterations-search "test")))
+      ;; Should return empty list on error
+      (expect result :to-equal '()))))
+
+(describe "shortcut--iteration-should-search-p"
+  (it "should return t when input meets minimum character threshold"
+    ;; Assuming shortcut-story-search-min-chars is 2 (default)
+    (let ((shortcut-story-search-min-chars 2))
+      (expect (shortcut--iteration-should-search-p "ab") :to-be-truthy)
+      (expect (shortcut--iteration-should-search-p "abc") :to-be-truthy)))
+
+  (it "should return nil when input is below minimum character threshold"
+    (let ((shortcut-story-search-min-chars 2))
+      (expect (shortcut--iteration-should-search-p "a") :not :to-be-truthy)
+      (expect (shortcut--iteration-should-search-p "") :not :to-be-truthy))))
+
+(describe "shortcut--iteration-merge-candidates"
+  (before-each
+    ;; Clear and populate cache for testing
+    (clrhash shortcut--iteration-cache)
+    (puthash "11111" '((id . 11111) (name . "Sprint 42")) shortcut--iteration-cache)
+    (puthash "22222" '((id . 22222) (name . "Sprint 43")) shortcut--iteration-cache)
+    (puthash "33333" '((id . 33333) (name . "Sprint 44")) shortcut--iteration-cache))
+
+  (it "should merge cache and search results without duplicates"
+    (let ((cache-candidates '(("11111 Sprint 42" . "11111")
+                              ("22222 Sprint 43" . "22222")))
+          (search-ids '("22222" "33333"))) ; 22222 is duplicate
+      (let ((result (shortcut--iteration-merge-candidates cache-candidates search-ids)))
+        ;; Should have 3 unique IDs
+        (expect (length result) :to-equal 3)
+        ;; Should contain all three IDs
+        (let ((ids (mapcar #'cdr result)))
+          (expect (member "11111" ids) :to-be-truthy)
+          (expect (member "22222" ids) :to-be-truthy)
+          (expect (member "33333" ids) :to-be-truthy)))))
+
+  (it "should use cached names for display keys"
+    (let ((cache-candidates '())
+          (search-ids '("11111")))
+      (let* ((result (shortcut--iteration-merge-candidates cache-candidates search-ids))
+             (first-candidate (car result)))
+        ;; Display key should include name from cache
+        (expect (car first-candidate) :to-match "Sprint 42")))))
+
+(describe "shortcut--iteration-completion-table"
+  (before-each
+    ;; Clear the cache before each test
+    (clrhash shortcut--iteration-cache))
+
+  (it "should be a valid completion table function"
+    ;; Verify the function is defined and callable
+    (expect (fboundp 'shortcut--iteration-completion-table) :to-be-truthy))
+
+  (it "should return metadata with correct category"
+    (let ((metadata (shortcut--iteration-completion-table "" nil 'metadata)))
+      ;; Should return metadata alist
+      (expect (eq (car metadata) 'metadata) :to-be-truthy)
+      ;; Should have shortcut-iteration category
+      (expect (alist-get 'category (cdr metadata)) :to-equal 'shortcut-iteration))))
 
 ;;; shortcut-test.el ends here
